@@ -146,7 +146,7 @@ clone_method(VALUE klass, ID mid, const rb_method_entry_t *me)
 	rb_iseq_t *iseq;
 	newiseqval = rb_iseq_clone(me->def->body.iseq->self, klass);
 	GetISeqPtr(newiseqval, iseq);
-	OBJ_WRITE(iseq->self, (VALUE *)&iseq->cref_stack, rewrite_cref_stack(me->def->body.iseq->cref_stack, me->klass, klass));
+	OBJ_WRITE(iseq->self, &iseq->cref_stack, rewrite_cref_stack(me->def->body.iseq->cref_stack, me->klass, klass));
 	rb_add_method(klass, mid, VM_METHOD_TYPE_ISEQ, iseq, me->flag);
 	RB_GC_GUARD(newiseqval);
     }
@@ -689,7 +689,9 @@ rb_include_class_new(VALUE module, VALUE super)
     }
     RCLASS_IV_TBL(klass) = RCLASS_IV_TBL(module);
     RCLASS_CONST_TBL(klass) = RCLASS_CONST_TBL(module);
-    RCLASS_M_TBL(klass) = RCLASS_M_TBL(RCLASS_ORIGIN(module));
+
+    RCLASS_M_TBL(OBJ_WB_UNPROTECT(klass)) = RCLASS_M_TBL(OBJ_WB_UNPROTECT(RCLASS_ORIGIN(module)));
+
     RCLASS_SET_SUPER(klass, super);
     if (RB_TYPE_P(module, T_ICLASS)) {
 	RBASIC_SET_CLASS(klass, RBASIC(module)->klass);

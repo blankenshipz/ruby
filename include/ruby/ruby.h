@@ -969,10 +969,10 @@ struct RArray {
 #define RARRAY_AREF(a, i)    (RARRAY_RAWPTR(a)[i])
 #define RARRAY_ASET(a, i, v) do { \
     const VALUE _ary_ = (a); \
-    OBJ_WRITE(_ary_, (VALUE *)&RARRAY_RAWPTR(_ary_)[i], (v)); \
+    OBJ_WRITE(_ary_, &RARRAY_RAWPTR(_ary_)[i], (v)); \
 } while (0)
 
-#define RARRAY_PTR(a) ((VALUE *)RARRAY_RAWPTR(RGENGC_WB_PROTECTED_ARRAY ? OBJ_WB_GIVEUP((VALUE)a) : ((VALUE)a)))
+#define RARRAY_PTR(a) ((VALUE *)RARRAY_RAWPTR(RGENGC_WB_PROTECTED_ARRAY ? OBJ_WB_UNPROTECT((VALUE)a) : ((VALUE)a)))
 
 struct RRegexp {
     struct RBasic basic;
@@ -1010,8 +1010,8 @@ struct RRational {
     const VALUE den;
 };
 
-#define RRATIONAL_SET_NUM(rat, n) OBJ_WRITE((rat), ((VALUE *)(&((struct RRational *)(rat))->num)),(n))
-#define RRATIONAL_SET_DEN(rat, d) OBJ_WRITE((rat), ((VALUE *)(&((struct RRational *)(rat))->den)),(d))
+#define RRATIONAL_SET_NUM(rat, n) OBJ_WRITE((rat), &((struct RRational *)(rat))->num,(n))
+#define RRATIONAL_SET_DEN(rat, d) OBJ_WRITE((rat), &((struct RRational *)(rat))->den,(d))
 
 struct RComplex {
     struct RBasic basic;
@@ -1019,8 +1019,8 @@ struct RComplex {
     const VALUE imag;
 };
 
-#define RCOMPLEX_SET_REAL(cmp, r) OBJ_WRITE((cmp), ((VALUE *)(&((struct RComplex *)(cmp))->real)),(r))
-#define RCOMPLEX_SET_IMAG(cmp, i) OBJ_WRITE((cmp), ((VALUE *)(&((struct RComplex *)(cmp))->imag)),(i))
+#define RCOMPLEX_SET_REAL(cmp, r) OBJ_WRITE((cmp), &((struct RComplex *)(cmp))->real,(r))
+#define RCOMPLEX_SET_IMAG(cmp, i) OBJ_WRITE((cmp), &((struct RComplex *)(cmp))->imag,(i))
 
 struct RData {
     struct RBasic basic;
@@ -1129,12 +1129,14 @@ struct RStruct {
   ((RBASIC(st)->flags & RSTRUCT_EMBED_LEN_MASK) ? \
    RSTRUCT(st)->as.ary : \
    RSTRUCT(st)->as.heap.ptr)
-#define RSTRUCT_PTR(st) ((VALUE *)RSTRUCT_RAWPTR(RGENGC_WB_PROTECTED_STRUCT ? OBJ_WB_GIVEUP((VALUE)st) : (VALUE)st))
+#define RSTRUCT_PTR(st) ((VALUE *)RSTRUCT_RAWPTR(RGENGC_WB_PROTECTED_STRUCT ? OBJ_WB_UNPROTECT((VALUE)st) : (VALUE)st))
 
-#define RSTRUCT_SET(st, idx, v) OBJ_WRITE(st, (VALUE *)&RSTRUCT_RAWPTR(st)[idx], v)
+#define RSTRUCT_SET(st, idx, v) OBJ_WRITE(st, &RSTRUCT_RAWPTR(st)[idx], (v))
 #define RSTRUCT_GET(st, idx)    (RSTRUCT_RAWPTR(st)[idx])
 
-#define RBIGNUM_EMBED_LEN_MAX ((int)((sizeof(VALUE)*3)/sizeof(BDIGIT)))
+#ifndef RBIGNUM_EMBED_LEN_MAX
+# define RBIGNUM_EMBED_LEN_MAX ((int)((sizeof(VALUE)*3)/sizeof(BDIGIT)))
+#endif
 struct RBignum {
     struct RBasic basic;
     union {
@@ -1245,27 +1247,25 @@ struct RBignum {
 #if USE_RGENGC
 #define OBJ_PROMOTED(x)             (SPECIAL_CONST_P(x) ? 0 : FL_TEST_RAW((x), FL_OLDGEN))
 #define OBJ_WB_PROTECTED(x)         (SPECIAL_CONST_P(x) ? 1 : FL_TEST_RAW((x), FL_WB_PROTECTED))
-#define OBJ_WB_GIVEUP(x)            rb_obj_wb_giveup(x, __FILE__, __LINE__)
-#define OBJ_WB_
+#define OBJ_WB_UNPROTECT(x)         rb_obj_wb_unprotect(x, __FILE__, __LINE__)
 
 void rb_gc_writebarrier(VALUE a, VALUE b);
-void rb_gc_giveup_promoted_writebarrier(VALUE obj);
+void rb_gc_writebarrier_unprotect_promoted(VALUE obj);
 
 #else /* USE_RGENGC */
 #define OBJ_PROMOTED(x)             0
 #define OBJ_WB_PROTECTED(x)         0
-#define OBJ_WB_GIVEUP(x)            rb_obj_wb_giveup(x, __FILE__, __LINE__)
-#define OBJ_SHADE(x)                OBJ_WB_GIVEUP(x) /* RGENGC terminology */
+#define OBJ_WB_UNPROTECT(x)         rb_obj_wb_unprotect(x, __FILE__, __LINE__)
 #endif
 
-#define OBJ_WRITE(a, slot, b)       rb_obj_write((VALUE)(a), (slot), (VALUE)(b), __FILE__, __LINE__)
+#define OBJ_WRITE(a, slot, b)       rb_obj_write((VALUE)(a), (VALUE *)(slot), (VALUE)(b), __FILE__, __LINE__)
 #define OBJ_WRITTEN(a, oldv, b)     rb_obj_written((VALUE)(a), (VALUE)(oldv), (VALUE)(b), __FILE__, __LINE__)
 
 static inline VALUE
-rb_obj_wb_giveup(VALUE x, const char *filename, int line)
+rb_obj_wb_unprotect(VALUE x, const char *filename, int line)
 {
-#ifdef RGENGC_LOGGING_WB_GIVEUP
-    RGENGC_LOGGING_WB_GIVEUP(x, filename, line);
+#ifdef RGENGC_LOGGING_WB_UNPROTECT
+    RGENGC_LOGGING_WB_UNPROTECT(x, filename, line);
 #endif
 
 #if USE_RGENGC
@@ -1274,7 +1274,7 @@ rb_obj_wb_giveup(VALUE x, const char *filename, int line)
 	RBASIC(x)->flags &= ~FL_WB_PROTECTED;
 
 	if (FL_TEST_RAW((x), FL_OLDGEN)) {
-	    rb_gc_giveup_promoted_writebarrier(x);
+	    rb_gc_writebarrier_unprotect_promoted(x);
 	}
     }
 #endif

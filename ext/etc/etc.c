@@ -183,7 +183,7 @@ etc_getpwnam(VALUE obj, VALUE nam)
 
     SafeStringValue(nam);
     pwd = getpwnam(RSTRING_PTR(nam));
-    if (pwd == 0) rb_raise(rb_eArgError, "can't find user for %s", RSTRING_PTR(nam));
+    if (pwd == 0) rb_raise(rb_eArgError, "can't find user for %"PRIsVALUE, nam);
     return setup_passwd(pwd);
 #else
     return Qnil;
@@ -426,7 +426,7 @@ etc_getgrnam(VALUE obj, VALUE nam)
 
     SafeStringValue(nam);
     grp = getgrnam(RSTRING_PTR(nam));
-    if (grp == 0) rb_raise(rb_eArgError, "can't find group for %s", RSTRING_PTR(nam));
+    if (grp == 0) rb_raise(rb_eArgError, "can't find group for %"PRIsVALUE, nam);
     return setup_group(grp);
 #else
     return Qnil;
@@ -673,11 +673,17 @@ Init_etc(void)
     rb_define_module_function(mEtc, "systmpdir", etc_systmpdir, 0);
 
     sPasswd =  rb_struct_define(NULL,
-				"name", "passwd", "uid", "gid",
+				"name",
+#ifdef HAVE_STRUCT_PASSWD_PW_PASSWD
+				"passwd",
+#endif
+				"uid",
+				"gid",
 #ifdef HAVE_STRUCT_PASSWD_PW_GECOS
 				"gecos",
 #endif
-				"dir", "shell",
+				"dir",
+				"shell",
 #ifdef HAVE_STRUCT_PASSWD_PW_CHANGE
 				"change",
 #endif

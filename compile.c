@@ -278,7 +278,7 @@ r_value(VALUE value)
   if (compile_debug) rb_compile_bug strs;          \
   GET_THREAD()->errinfo = iseq->compile_data->err_info;  \
   rb_compile_error strs;                           \
-  OBJ_WRITE(iseq->self, (VALUE *)&iseq->compile_data->err_info, GET_THREAD()->errinfo); \
+  OBJ_WRITE(iseq->self, &iseq->compile_data->err_info, GET_THREAD()->errinfo); \
   GET_THREAD()->errinfo = tmp;                     \
   ret = 0;                                         \
   break;                                           \
@@ -1706,7 +1706,7 @@ iseq_set_exception_table(rb_iseq_t *iseq)
 	}
     }
 
-    OBJ_WRITE(iseq->self, (VALUE *)&iseq->compile_data->catch_table_ary, 0); /* free */
+    OBJ_WRITE(iseq->self, &iseq->compile_data->catch_table_ary, 0); /* free */
     return COMPILE_OK;
 }
 
@@ -2999,10 +2999,10 @@ make_name_for_block(rb_iseq_t *iseq)
     }
 
     if (level == 1) {
-	return rb_sprintf("block in %s", RSTRING_PTR(ip->location.label));
+	return rb_sprintf("block in %"PRIsVALUE, ip->location.label);
     }
     else {
-	return rb_sprintf("block (%d levels) in %s", level, RSTRING_PTR(ip->location.label));
+	return rb_sprintf("block (%d levels) in %"PRIsVALUE, level, ip->location.label);
     }
 }
 

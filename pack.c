@@ -225,22 +225,7 @@ TOKEN_PASTE(swap,x)(xtype z)		\
 # define VTOHD(x,y)	rb_vtohd(x)
 #endif
 
-static unsigned long
-num2i32(VALUE x)
-{
-    x = rb_to_int(x); /* is nil OK? (should not) */
-
-    if (FIXNUM_P(x)) return FIX2LONG(x);
-    if (RB_TYPE_P(x, T_BIGNUM)) {
-	return rb_big2ulong_pack(x);
-    }
-    rb_raise(rb_eTypeError, "can't convert %s to `integer'", rb_obj_classname(x));
-
-    UNREACHABLE;
-}
-
 #define MAX_INTEGER_PACK_SIZE 8
-/* #define FORCE_BIG_PACK */
 
 static const char toofew[] = "too few arguments";
 
@@ -700,82 +685,17 @@ pack_pack(VALUE ary, VALUE fmt)
 	    if (explicit_endian) {
 		bigendian_p = explicit_endian == '>';
 	    }
+            if (integer_size > MAX_INTEGER_PACK_SIZE)
+                rb_bug("unexpected intger size for pack: %d", integer_size);
+            while (len-- > 0) {
+                char intbuf[MAX_INTEGER_PACK_SIZE];
 
-            switch (integer_size) {
-#if !defined(FORCE_BIG_PACK)
-              case 1:
-                while (len-- > 0) {
-                    char c;
-
-                    from = NEXTFROM;
-                    c = (char)num2i32(from);
-                    rb_str_buf_cat(res, &c, sizeof(char));
-                }
-		break;
-#endif
-
-#if defined(HAVE_INT16_T) && !defined(FORCE_BIG_PACK)
-              case SIZEOF_INT16_T:
-		while (len-- > 0) {
-                    union {
-                        int16_t i;
-                        char a[sizeof(int16_t)];
-                    } v;
-
-		    from = NEXTFROM;
-		    v.i = (int16_t)num2i32(from);
-		    if (bigendian_p != BIGENDIAN_P()) v.i = swap16(v.i);
-		    rb_str_buf_cat(res, v.a, sizeof(int16_t));
-		}
-		break;
-#endif
-
-#if defined(HAVE_INT32_T) && !defined(FORCE_BIG_PACK)
-              case SIZEOF_INT32_T:
-		while (len-- > 0) {
-		    union {
-                        int32_t i;
-                        char a[sizeof(int32_t)];
-                    } v;
-
-		    from = NEXTFROM;
-		    v.i = (int32_t)num2i32(from);
-		    if (bigendian_p != BIGENDIAN_P()) v.i = swap32(v.i);
-		    rb_str_buf_cat(res, v.a, sizeof(int32_t));
-		}
-		break;
-#endif
-
-#if defined(HAVE_INT64_T) && SIZEOF_LONG == SIZEOF_INT64_T && !defined(FORCE_BIG_PACK)
-              case SIZEOF_INT64_T:
-		while (len-- > 0) {
-		    union {
-                        int64_t i;
-                        char a[sizeof(int64_t)];
-                    } v;
-
-		    from = NEXTFROM;
-		    v.i = num2i32(from); /* can return 64bit value if SIZEOF_LONG == SIZEOF_INT64_T */
-		    if (bigendian_p != BIGENDIAN_P()) v.i = swap64(v.i);
-		    rb_str_buf_cat(res, v.a, sizeof(int64_t));
-		}
-		break;
-#endif
-
-	      default:
-                if (integer_size > MAX_INTEGER_PACK_SIZE)
-                    rb_bug("unexpected intger size for pack: %d", integer_size);
-                while (len-- > 0) {
-                    char intbuf[MAX_INTEGER_PACK_SIZE];
-
-                    from = NEXTFROM;
-                    rb_integer_pack(from, intbuf, integer_size, 1, 0,
-                        INTEGER_PACK_2COMP |
-                        (bigendian_p ? INTEGER_PACK_BIG_ENDIAN : INTEGER_PACK_LITTLE_ENDIAN));
-                    rb_str_buf_cat(res, intbuf, integer_size);
-                }
-                break;
-	    }
+                from = NEXTFROM;
+                rb_integer_pack(from, intbuf, integer_size, 1, 0,
+                    INTEGER_PACK_2COMP |
+                    (bigendian_p ? INTEGER_PACK_BIG_ENDIAN : INTEGER_PACK_LITTLE_ENDIAN));
+                rb_str_buf_cat(res, intbuf, integer_size);
+            }
 	    break;
 
 	  case 'f':		/* single precision float in native format */
@@ -1500,23 +1420,16 @@ pack_unpack(VALUE str, VALUE fmt)
 	    break;
 
 	  case 'c':
-	    PACK_LENGTH_ADJUST_SIZE(sizeof(char));
-	    while (len-- > 0) {
-                int c = *s++;
-                if (c > (char)127) c-=256;
-		UNPACK_PUSH(INT2FIX(c));
-	    }
-	    PACK_ITEM_ADJUST();
-	    break;
+	    signed_p = 1;
+	    integer_size = 1;
+	    bigendian_p = BIGENDIAN_P(); /* not effective */
+	    goto unpack_integer;
 
 	  case 'C':
-	    PACK_LENGTH_ADJUST_SIZE(sizeof(unsigned char));
-	    while (len-- > 0) {
-		unsigned char c = *s++;
-		UNPACK_PUSH(INT2FIX(c));
-	    }
-	    PACK_ITEM_ADJUST();
-	    break;
+	    signed_p = 0;
+	    integer_size = 1;
+	    bigendian_p = BIGENDIAN_P(); /* not effective */
+	    goto unpack_integer;
 
 	  case 's':
 	    signed_p = 1;
@@ -1594,121 +1507,17 @@ pack_unpack(VALUE str, VALUE fmt)
 	    if (explicit_endian) {
 		bigendian_p = explicit_endian == '>';
 	    }
-
-	    switch (integer_size) {
-#if defined(HAVE_INT16_T) && !defined(FORCE_BIG_PACK)
-	      case SIZEOF_INT16_T:
-		if (signed_p) {
-		    PACK_LENGTH_ADJUST_SIZE(sizeof(int16_t));
-		    while (len-- > 0) {
-			union {
-                            int16_t i;
-                            char a[sizeof(int16_t)];
-                        } v;
-			memcpy(v.a, s, sizeof(int16_t));
-			if (bigendian_p != BIGENDIAN_P()) v.i = swap16(v.i);
-			s += sizeof(int16_t);
-			UNPACK_PUSH(INT2FIX(v.i));
-		    }
-		    PACK_ITEM_ADJUST();
-		}
-		else {
-		    PACK_LENGTH_ADJUST_SIZE(sizeof(uint16_t));
-		    while (len-- > 0) {
-			union {
-                            uint16_t i;
-                            char a[sizeof(uint16_t)];
-                        } v;
-			memcpy(v.a, s, sizeof(uint16_t));
-			if (bigendian_p != BIGENDIAN_P()) v.i = swap16(v.i);
-			s += sizeof(uint16_t);
-			UNPACK_PUSH(INT2FIX(v.i));
-		    }
-		    PACK_ITEM_ADJUST();
-		}
-		break;
-#endif
-
-#if defined(HAVE_INT32_T) && !defined(FORCE_BIG_PACK)
-	      case SIZEOF_INT32_T:
-		if (signed_p) {
-		    PACK_LENGTH_ADJUST_SIZE(sizeof(int32_t));
-		    while (len-- > 0) {
-			union {
-                            int32_t i;
-                            char a[sizeof(int32_t)];
-                        } v;
-			memcpy(v.a, s, sizeof(int32_t));
-			if (bigendian_p != BIGENDIAN_P()) v.i = swap32(v.i);
-			s += sizeof(int32_t);
-			UNPACK_PUSH(INT2NUM(v.i));
-		    }
-		    PACK_ITEM_ADJUST();
-		}
-		else {
-		    PACK_LENGTH_ADJUST_SIZE(sizeof(uint32_t));
-		    while (len-- > 0) {
-			union {
-                            uint32_t i;
-                            char a[sizeof(uint32_t)];
-                        } v;
-			memcpy(v.a, s, sizeof(uint32_t));
-			if (bigendian_p != BIGENDIAN_P()) v.i = swap32(v.i);
-			s += sizeof(uint32_t);
-			UNPACK_PUSH(UINT2NUM(v.i));
-		    }
-		    PACK_ITEM_ADJUST();
-		}
-		break;
-#endif
-
-#if defined(HAVE_INT64_T) && !defined(FORCE_BIG_PACK)
-	      case SIZEOF_INT64_T:
-		if (signed_p) {
-		    PACK_LENGTH_ADJUST_SIZE(sizeof(int64_t));
-		    while (len-- > 0) {
-			union {
-                            int64_t i;
-                            char a[sizeof(int64_t)];
-                        } v;
-			memcpy(v.a, s, sizeof(int64_t));
-			if (bigendian_p != BIGENDIAN_P()) v.i = swap64(v.i);
-			s += sizeof(int64_t);
-			UNPACK_PUSH(INT64toNUM(v.i));
-		    }
-		    PACK_ITEM_ADJUST();
-		}
-		else {
-		    PACK_LENGTH_ADJUST_SIZE(sizeof(uint64_t));
-		    while (len-- > 0) {
-			union {
-                            uint64_t i;
-                            char a[sizeof(uint64_t)];
-                        } v;
-			memcpy(v.a, s, sizeof(uint64_t));
-			if (bigendian_p != BIGENDIAN_P()) v.i = swap64(v.i);
-			s += sizeof(uint64_t);
-			UNPACK_PUSH(UINT64toNUM(v.i));
-		    }
-		    PACK_ITEM_ADJUST();
-		}
-		break;
-#endif
-
-              default:
-                PACK_LENGTH_ADJUST_SIZE(integer_size);
-                while (len-- > 0) {
-                    int flags = bigendian_p ? INTEGER_PACK_BIG_ENDIAN : INTEGER_PACK_LITTLE_ENDIAN;
-                    VALUE val;
-                    if (signed_p)
-                        flags |= INTEGER_PACK_2COMP;
-                    val = rb_integer_unpack(s, integer_size, 1, 0, flags);
-                    UNPACK_PUSH(val);
-                    s += integer_size;
-                }
-                PACK_ITEM_ADJUST();
-		break;
-	    }
+            PACK_LENGTH_ADJUST_SIZE(integer_size);
+            while (len-- > 0) {
+                int flags = bigendian_p ? INTEGER_PACK_BIG_ENDIAN : INTEGER_PACK_LITTLE_ENDIAN;
+                VALUE val;
+                if (signed_p)
+                    flags |= INTEGER_PACK_2COMP;
+                val = rb_integer_unpack(s, integer_size, 1, 0, flags);
+                UNPACK_PUSH(val);
+                s += integer_size;
+            }
+            PACK_ITEM_ADJUST();
             break;
 
 	  case 'f':

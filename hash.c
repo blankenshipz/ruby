@@ -56,7 +56,7 @@ static ID id_hash, id_yield, id_default;
 VALUE
 rb_hash_set_ifnone(VALUE hash, VALUE ifnone)
 {
-    OBJ_WRITE(hash, (VALUE *)(&RHASH(hash)->ifnone), ifnone);
+    OBJ_WRITE(hash, (&RHASH(hash)->ifnone), ifnone);
     return hash;
 }
 
@@ -298,7 +298,7 @@ hash_tbl(VALUE hash)
 struct st_table *
 rb_hash_tbl(VALUE hash)
 {
-    OBJ_WB_GIVEUP(hash);
+    OBJ_WB_UNPROTECT(hash);
     return hash_tbl(hash);
 }
 
@@ -716,7 +716,7 @@ rb_hash_fetch_m(int argc, VALUE *argv, VALUE hash)
 		desc = rb_any_to_s(key);
 	    }
 	    desc = rb_str_ellipsize(desc, 65);
-	    rb_raise(rb_eKeyError, "key not found: %s", RSTRING_PTR(desc));
+	    rb_raise(rb_eKeyError, "key not found: %"PRIsVALUE, desc);
 	}
 	return if_none;
     }
