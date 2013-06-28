@@ -198,7 +198,12 @@ VALUE rb_fiber_alive_p(VALUE);
 VALUE rb_enum_values_pack(int, VALUE*);
 /* enumerator.c */
 VALUE rb_enumeratorize(VALUE, VALUE, int, VALUE *);
-VALUE rb_enumeratorize_with_size(VALUE, VALUE, int, VALUE *, VALUE (*)(ANYARGS));
+typedef VALUE rb_enumerator_size_func(VALUE, VALUE, VALUE);
+VALUE rb_enumeratorize_with_size(VALUE, VALUE, int, VALUE *, rb_enumerator_size_func *);
+#ifndef RUBY_EXPORT
+#define rb_enumeratorize_with_size(obj, id, argc, argv, size_fn) \
+    rb_enumeratorize_with_size(obj, id, argc, argv, (rb_enumerator_size_func *)(size_fn))
+#endif
 #define RETURN_SIZED_ENUMERATOR(obj, argc, argv, size_fn) do {		\
 	if (!rb_block_given_p())					\
 	    return rb_enumeratorize_with_size((obj), ID2SYM(rb_frame_this_func()),\

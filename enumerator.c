@@ -120,7 +120,7 @@ struct enumerator {
     VALUE feedvalue;
     VALUE stop_exc;
     VALUE size;
-    VALUE (*size_fn)(ANYARGS);
+    rb_enumerator_size_func *size_fn;
 };
 
 static VALUE rb_cGenerator, rb_cYielder;
@@ -266,7 +266,7 @@ enumerator_allocate(VALUE klass)
 }
 
 static VALUE
-enumerator_init(VALUE enum_obj, VALUE obj, VALUE meth, int argc, VALUE *argv, VALUE (*size_fn)(ANYARGS), VALUE size)
+enumerator_init(VALUE enum_obj, VALUE obj, VALUE meth, int argc, VALUE *argv, rb_enumerator_size_func *size_fn, VALUE size)
 {
     struct enumerator *ptr;
 
@@ -402,10 +402,10 @@ rb_enumeratorize(VALUE obj, VALUE meth, int argc, VALUE *argv)
 }
 
 static VALUE
-lazy_to_enum_i(VALUE self, VALUE meth, int argc, VALUE *argv, VALUE (*size_fn)(ANYARGS));
+lazy_to_enum_i(VALUE self, VALUE meth, int argc, VALUE *argv, rb_enumerator_size_func *size_fn);
 
 VALUE
-rb_enumeratorize_with_size(VALUE obj, VALUE meth, int argc, VALUE *argv, VALUE (*size_fn)(ANYARGS))
+rb_enumeratorize_with_size(VALUE obj, VALUE meth, int argc, VALUE *argv, rb_enumerator_size_func *size_fn)
 {
     /* Similar effect as calling obj.to_enum, i.e. dispatching to either
        Kernel#to_enum vs Lazy#to_enum */
@@ -413,7 +413,7 @@ rb_enumeratorize_with_size(VALUE obj, VALUE meth, int argc, VALUE *argv, VALUE (
 	return lazy_to_enum_i(obj, meth, argc, argv, size_fn);
     else
 	return enumerator_init(enumerator_allocate(rb_cEnumerator),
-	    obj, meth, argc, argv, size_fn, Qnil);
+			       obj, meth, argc, argv, size_fn, Qnil);
 }
 
 static VALUE
@@ -474,6 +474,12 @@ enumerator_with_index_i(VALUE val, VALUE m, int argc, VALUE *argv)
 static VALUE
 enumerator_size(VALUE obj);
 
+static VALUE
+enumerator_enum_size(VALUE obj, VALUE args, VALUE eobj)
+{
+    return enumerator_size(obj);
+}
+
 /*
  * call-seq:
  *   e.with_index(offset = 0) {|(*args), idx| ... }
@@ -492,7 +498,7 @@ enumerator_with_index(int argc, VALUE *argv, VALUE obj)
     VALUE memo;
 
     rb_scan_args(argc, argv, "01", &memo);
-    RETURN_SIZED_ENUMERATOR(obj, argc, argv, enumerator_size);
+    RETURN_SIZED_ENUMERATOR(obj, argc, argv, enumerator_enum_size);
     if (NIL_P(memo))
 	memo = INT2FIX(0);
     else
@@ -557,7 +563,7 @@ enumerator_with_object_i(VALUE val, VALUE memo, int argc, VALUE *argv)
 static VALUE
 enumerator_with_object(VALUE obj, VALUE memo)
 {
-    RETURN_SIZED_ENUMERATOR(obj, 1, &memo, enumerator_size);
+    RETURN_SIZED_ENUMERATOR(obj, 1, &memo, enumerator_enum_size);
     enumerator_block_call(obj, enumerator_with_object_i, memo);
 
     return memo;
@@ -1254,6 +1260,12 @@ enum_size(VALUE self)
 }
 
 static VALUE
+lazyenum_size(VALUE self, VALUE args, VALUE eobj)
+{
+    return enum_size(self);
+}
+
+static VALUE
 lazy_size(VALUE self)
 {
     return enum_size(rb_ivar_get(self, id_receiver));
@@ -1349,7 +1361,7 @@ lazy_initialize(int argc, VALUE *argv, VALUE self)
 }
 
 static VALUE
-lazy_set_method(VALUE lazy, VALUE args, VALUE (*size_fn)(ANYARGS))
+lazy_set_method(VALUE lazy, VALUE args, rb_enumerator_size_func *size_fn)
 {
     ID id = rb_frame_this_func();
     struct enumerator *e = enumerator_ptr(lazy);
@@ -1399,17 +1411,17 @@ lazy_set_method(VALUE lazy, VALUE args, VALUE (*size_fn)(ANYARGS))
 static VALUE
 enumerable_lazy(VALUE obj)
 {
-    VALUE result = lazy_to_enum_i(obj, sym_each, 0, 0, enum_size);
+    VALUE result = lazy_to_enum_i(obj, sym_each, 0, 0, lazyenum_size);
     /* Qfalse indicates that the Enumerator::Lazy has no method name */
     rb_ivar_set(result, id_method, Qfalse);
     return result;
 }
 
 static VALUE
-lazy_to_enum_i(VALUE obj, VALUE meth, int argc, VALUE *argv, VALUE (*size_fn)(ANYARGS))
+lazy_to_enum_i(VALUE obj, VALUE meth, int argc, VALUE *argv, rb_enumerator_size_func *size_fn)
 {
     return enumerator_init(enumerator_allocate(rb_cLazy),
-	obj, meth, argc, argv, size_fn, Qnil);
+			   obj, meth, argc, argv, size_fn, Qnil);
 }
 
 /*
