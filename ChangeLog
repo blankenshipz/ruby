@@ -1,3 +1,270 @@
+Thu Jul  4 00:36:03 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* internal.h (SIGNED_INTEGER_MAX): supperss warning C4146 on VC6.
+	  seems a logical ORed expression becomes unsigned.
+
+Thu Jul  4 00:13:01 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* ruby_atomic.h (rb_w32_atomic_cas): call InterlockedCompareExchange
+	  directly.
+
+	* ruby_atomic.h (ATOMIC_CAS): fix missing function call.
+
+Wed Jul  3 23:47:35 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* ruby_atomic.h (ATOMIC_CAS): suppress C4022 and C4047 warnings in
+	  VC6.  only InterlockedCompareExchange is declared using PVOID.
+
+Wed Jul  3 22:29:20 2013  Tanaka Akira  <akr@fsij.org>
+
+	* internal.h (ruby_digit36_to_number_table): Declared.
+
+	* util.c (ruby_digit36_to_number_table): Moved from scan_digits.
+
+	* bignum.c (conv_digit): Use ruby_digit36_to_number_table.
+
+	* pack.c (hex2num): Ditto.
+
+Wed Jul  3 18:12:56 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* lib/mkmf.rb (install_dirs): revert DESTDIR prefix by r39841, since
+	  it is fixed by r41648.  [ruby-core:55760] [Bug #8115]
+
+Wed Jul  3 14:15:25 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* dir.c (do_stat): use rb_w32_ustati64() in win32.c to get rid of
+	  mysterious behavior of FindFirstFile() Windows API which treat "<"
+	  and ">" like as wildcard characters.  [ruby-core:55764] [Bug #8597]
+
+Wed Jul  3 12:06:42 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (maxpow_in_bdigit): Renamed from calc_hbase and return
+	  maxpow.
+
+Tue Jul  2 23:47:50 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (roomof): Cast to long.
+	  (rb_ull2big): Fix bignew arguments.
+
+Tue Jul  2 21:17:37 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (rb_cstr_to_inum): Merge two temporary buffers.
+
+Tue Jul  2 20:25:04 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (rb_cstr_to_inum): Use BDIGIT_DBL to collect adjacent digits.
+	  (BDIGIT_DBL_MAX): New macro.
+	  (maxpow_in_bdigit_dbl): New function.
+
+Tue Jul  2 17:23:33 2013  Shugo Maeda  <shugo@ruby-lang.org>
+
+	* doc/syntax/refinements.rdoc: add description of Module#using and
+	  refinement inheritance by module inclusion.
+
+Tue Jul  2 17:22:44 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* internal.h: add EUC-JP and Windows-31J.
+
+	* re.c (rb_char_to_option_kcode): use built-in encoding indexes in
+	  internal.h.
+
+	* internal.h: add UTF8-MAC.
+
+	* dir.c (rb_utf8mac_encoding): use built-in encoding indexes in
+	  internal.h.
+
+	* internal.h: add UTF-{16,32} dummy encodings.
+
+	* string.c (rb_str_inspect, str_scrub0): use built-in encoding indexes
+	  in internal.h.
+
+	* internal.h: add UTF-{16,32}{BE,LE}.
+
+	* io.c (io_strip_bom): use built-in encoding indexes in internal.h.
+
+	* internal.h (rb_{ascii8bit,utf8,usascii}_encindex): use built-in
+	  encoding indexes for optimization.
+
+	* encoding.c (enc_inspect, rb_locale_encindex),
+	  (enc_set_filesystem_encoding, rb_filesystem_encindex): use built-in
+	  encoding indexes directly.
+
+	* encoding.c (rb_enc_set_index, rb_enc_associate_index): validate
+	  argument encoding index.
+
+	* include/ruby/encoding.h (ENCODING_SET): use rb_enc_set_index()
+	  instead of setting inlined bits directly.
+
+	* encoding.c (rb_enc_init): register preserved indexes.
+
+	* internal.h (ruby_preserved_encindex): move from encoding.c.
+
+Tue Jul  2 11:14:36 2013  Shota Fukumori  <sorah@cookpad.com>
+
+	* lib/mkmf.rb (try_config): Fix to not replace $LDFLAGS with $libs
+	  (1.9.3 behavior) [ruby-core:55752] [Bug #8595]
+
+Tue Jul  2 00:39:59 2013  Tanaka Akira  <akr@fsij.org>
+
+	* ext/socket/ipsocket.c (init_inetsock_internal): Don't try mismatched
+	  address family if already failed.
+
+Mon Jul  1 23:07:38 2013  NARUSE, Yui  <naruse@ruby-lang.org>
+
+	* template/encdb.h.tmpl: define encoding index macros to use the index
+	  statically from C source.
+
+Mon Jul  1 22:57:19 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bary_mul2): New function.
+	  (rb_cstr_to_inum): Use a better algorithm to compose the result
+	  if input length is very long.
+
+Mon Jul  1 20:22:00 2013  Kenta Murata  <mrkn@cookpad.com>
+
+	* ext/bigdecimal/bigdecimal.h (RB_UNUSED_VAR, UNREACHABLE):
+	  import macros from ruby.h for 1.9.3.
+	  [Bug #8588] [ruby-core:55730]
+
+	* ext/bigdecimal/bigdecimal.gemspec: Bump version to 1.2.1.
+
+Mon Jul  1 20:03:39 2013  Tanaka Akira  <akr@fsij.org>
+
+	* ext/socket/ipsocket.c (init_inetsock_internal): Use an address
+	  family for local address which is different to the remote
+	  address if no other choice.
+
+Mon Jul  1 15:05:00 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* lib/csv.rb (CSV#<<): use StringIO#set_encoding instead of creating
+	  new StringIO instance with String#force_encoding, forcing encoding
+	  discards the cached coderange bits and can make further operations
+	  very slow.  [ruby-core:55714] [Bug #8585]
+
+	* ext/stringio/stringio.c (strio_write): keep coderange of
+	  ptr->string.
+
+	* string.c (rb_enc_cr_str_buf_cat, rb_str_append): consider an empty
+	  string 7bit-clean and should not discard cached coderange of string
+	  to be appended.
+
+Mon Jul  1 12:56:41 2013  Shugo Maeda  <shugo@ruby-lang.org>
+
+	* eval.c (rb_using_module): activate refinements in the ancestors of
+	  the argument module to support refinement inheritance by
+	  Module#include.  [ruby-core:55671] [Feature #8571]
+
+	* test/ruby/test_refinement.rb: related test.
+
+Mon Jul  1 12:02:39 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (rb_cstr_to_inum): Skip leading zeros.
+
+Mon Jul  1 00:59:23 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (nlz16): New function.
+	  (nlz32): Ditto.
+	  (nlz64): Ditto.
+	  (nlz128): Ditto.
+	  (nlz): Redefined using an above function.
+	  (bitsize): New macro.
+	  (rb_cstr_to_inum): Use bitsize instead of nlz.
+
+Sun Jun 30 22:40:00 2013  Charlie Somerville  <charliesome@ruby-lang.org>
+
+	* lib/prime.rb: Corrected a few comments. Patch by @Nullset14.
+	  Fixes GH-346.
+
+Sun Jun 30 21:53:38 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (rb_cstr_to_inum): Use rb_integer_unpack if base is a power
+	  of 2.
+
+Sun Jun 30 10:59:23 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* win32/win32.c (join_argv): use backslash instead of slash in program
+	  path, otherwise cannot invoke "./c\u{1ee7}a.exe" for some reason.
+	  [ruby-core:24309] [Bug #1771]
+
+	* io.c (spawnv, spawn): use UTF-8 spawn family.  [Bug #1771]
+
+	* process.c (proc_exec_sh, proc_spawn_cmd, proc_spawn_sh): ditto.
+
+	* win32/win32.c (translate_char, join_argv, has_redirection): make
+	  codepage aware.
+
+	* win32/win32.c (rb_w32_udln_find_exe_r, rb_w32_udln_find_file_r):
+	  codepage independent versions.
+
+	* win32/win32.c (w32_spawn): extract codepage aware code from
+	  rb_w32_spawn().
+
+	* win32/win32.c (rb_w32_uspawn): add UTF-8 version function.
+
+	* win32/win32.c (w32_aspawn_flags): extract codepage aware code from
+	  rb_w32_aspawn_flags().
+
+	* win32/win32.c (rb_w32_uaspawn_flags, rb_w32_uaspawn_flags): add
+	  UTF-8 version functions.
+
+	* win32/win32.c (w32_getenv): extract codepage aware code from
+	  rb_w32_ugetenv() and rb_w32_getenv().
+
+	* win32/win32.c (w32_stati64): extract codepage aware code from
+	  rb_w32_ustati64() and rb_w32_stati64().
+
+	* dln.h (DLN_FIND_EXTRA_ARG, DLN_FIND_EXTRA_ARG_DECL): allow extra
+	  arguments to dln_find_{exe,file}_r().
+
+	* dln_find.c (dln_find_exe_r, dln_find_file_r): add extract arguments.
+
+	* process.c (EXPORT_STR, EXPORT_DUP): convert to default process
+	  encoding if defined.
+
+	* process.c (check_exec_env_i): convert environment variables too.
+
+	* process.c (rb_exec_fillarg): convert program path and arguments too.
+
+Sun Jun 30 01:57:08 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (big_rshift): Use abs2twocomp and twocomp2abs_bang.
+
+Sun Jun 30 00:14:20 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (RBIGNUM_SET_NEGATIVE_SIGN): New macro.
+	  (RBIGNUM_SET_POSITIVE_SIGN): Ditto.
+	  (rb_big_neg): Inline get2comp to avoid double negation.
+
+Sat Jun 29 23:26:41 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bary_neg): Extracted from bary_2comp.
+	  (bary_plus_one): Extracted from bary_2comp.
+	  (bary_2comp): Use bary_neg and bary_plus_one.
+	  (big_extend_carry): Extracted from get2comp.
+	  (get2comp): Use big_extend_carry.
+	  (rb_integer_unpack): Use big_extend_carry.
+	  (rb_big_neg): Use bary_neg.
+
+Sat Jun 29 22:31:59 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bary_2comp): Simplified.
+
+Sat Jun 29 09:33:53 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bigor_int): Return -1 if y == -1.
+
+Sat Jun 29 09:07:16 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bigor_int): Use RB_GC_GUARD.
+	  (bigxor_int): Take xn and hibitsx arguments.  Use twocomp2abs_bang.
+	  (rb_big_xor): Use abs2twocomp and twocomp2abs_bang.
+
+Sat Jun 29 08:19:58 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bigand_int): Don't apply bitwise and for BDIGIT and long.
+	  (bigor_int): Take xn and hibitsx arguments.  Use twocomp2abs_bang.
+	  (rb_big_or): Use abs2twocomp and twocomp2abs_bang.
+
 Fri Jun 29 01:08:00 2013  Charlie Somerville  <charliesome@ruby-lang.org>
 
 	* numeric.c (fix_mul): remove FIT_SQRT_LONG test as it was causing
@@ -146,7 +413,8 @@ Tue Jun 25 21:26:00 2013  Kenta Murata  <mrkn@mrkn.jp>
 
 	* ext/bigdecimal/bigdecimal.c (BigMath_s_exp): Fix for the cases when
 	  the argument x is not a BigDecimal.
-	  This change is based on the patch made by Garth Snyder.
+	  This change is based on the patch made by Heesob Park and Garth Snyder.
+	  [Bug #6862] [ruby-core:47145]
 	  [Fix GH-332] https://github.com/ruby/ruby/pull/332
 
 Tue Jun 25 20:36:31 2013  Tanaka Akira  <akr@fsij.org>

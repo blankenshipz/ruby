@@ -1276,7 +1276,7 @@ proc_exec_sh(const char *str, VALUE envp_str)
     }
 
 #ifdef _WIN32
-    rb_w32_spawn(P_OVERLAY, (char *)str, 0);
+    rb_w32_uspawn(P_OVERLAY, (char *)str, 0);
     return -1;
 #else
 #if defined(__CYGWIN32__) || defined(__EMX__)
@@ -1350,9 +1350,27 @@ memsize_exec_arg(const void *ptr)
 }
 
 static const rb_data_type_t exec_arg_data_type = {
-  "exec_arg",
-  {mark_exec_arg, free_exec_arg, memsize_exec_arg},
+    "exec_arg",
+    {mark_exec_arg, free_exec_arg, memsize_exec_arg},
 };
+
+#ifdef _WIN32
+# define DEFAULT_PROCESS_ENCODING rb_utf8_encoding()
+#endif
+#ifdef DEFAULT_PROCESS_ENCODING
+# define EXPORT_STR(str) rb_str_export_to_enc((str), DEFAULT_PROCESS_ENCODING)
+# define EXPORT_DUP(str) export_dup(str)
+static VALUE
+export_dup(VALUE str)
+{
+    VALUE newstr = EXPORT_STR(str);
+    if (newstr == str) newstr = rb_str_dup(str);
+    return newstr;
+}
+#else
+# define EXPORT_STR(str) (str)
+# define EXPORT_DUP(str) rb_str_dup(str)
+#endif
 
 #if !defined(HAVE_FORK) && defined(HAVE_SPAWNV)
 # define USE_SPAWNV 1
@@ -1365,7 +1383,7 @@ static const rb_data_type_t exec_arg_data_type = {
 
 #if USE_SPAWNV
 #if defined(_WIN32)
-#define proc_spawn_cmd_internal(argv, prog) rb_w32_aspawn(P_NOWAIT, (prog), (argv))
+#define proc_spawn_cmd_internal(argv, prog) rb_w32_uaspawn(P_NOWAIT, (prog), (argv))
 #else
 static rb_pid_t
 proc_spawn_cmd_internal(char **argv, char *prog)
@@ -1404,7 +1422,7 @@ proc_spawn_cmd(char **argv, VALUE prog, struct rb_execarg *eargp)
 	if (eargp->new_pgroup_given && eargp->new_pgroup_flag) {
 	    flags = CREATE_NEW_PROCESS_GROUP;
 	}
-	pid = rb_w32_aspawn_flags(P_NOWAIT, prog ? RSTRING_PTR(prog) : 0, argv, flags);
+	pid = rb_w32_uaspawn_flags(P_NOWAIT, prog ? RSTRING_PTR(prog) : 0, argv, flags);
 #else
 	pid = proc_spawn_cmd_internal(argv, prog ? RSTRING_PTR(prog) : 0);
 #endif
@@ -1413,7 +1431,7 @@ proc_spawn_cmd(char **argv, VALUE prog, struct rb_execarg *eargp)
 }
 
 #if defined(_WIN32)
-#define proc_spawn_sh(str) rb_w32_spawn(P_NOWAIT, (str), 0)
+#define proc_spawn_sh(str) rb_w32_uspawn(P_NOWAIT, (str), 0)
 #else
 static rb_pid_t
 proc_spawn_sh(char *str)
@@ -1560,7 +1578,7 @@ check_exec_redirect(VALUE key, VALUE val, struct rb_execarg *eargp)
                 flags = rb_to_int(flags);
             perm = rb_ary_entry(val, 2);
             perm = NIL_P(perm) ? INT2FIX(0644) : rb_to_int(perm);
-            param = hide_obj(rb_ary_new3(3, hide_obj(rb_str_dup(path)),
+            param = hide_obj(rb_ary_new3(3, hide_obj(EXPORT_DUP(path)),
                                             flags, perm));
             eargp->fd_open = check_exec_redirect1(eargp->fd_open, key, param);
         }
@@ -1576,7 +1594,7 @@ check_exec_redirect(VALUE key, VALUE val, struct rb_execarg *eargp)
         else
             flags = INT2NUM(O_RDONLY);
         perm = INT2FIX(0644);
-        param = hide_obj(rb_ary_new3(3, hide_obj(rb_str_dup(path)),
+        param = hide_obj(rb_ary_new3(3, hide_obj(EXPORT_DUP(path)),
                                         flags, perm));
         eargp->fd_open = check_exec_redirect1(eargp->fd_open, key, param);
         break;
@@ -1682,7 +1700,7 @@ rb_execarg_addopt(VALUE execarg_obj, VALUE key, VALUE val)
             }
             FilePathValue(val);
             eargp->chdir_given = 1;
-            eargp->chdir_dir = hide_obj(rb_str_dup(val));
+            eargp->chdir_dir = hide_obj(EXPORT_DUP(val));
         }
         else if (id == rb_intern("umask")) {
 	    mode_t cmask = NUM2MODET(val);
@@ -1912,6 +1930,9 @@ check_exec_env_i(st_data_t st_key, st_data_t st_val, st_data_t arg)
     if (!NIL_P(val))
         StringValueCStr(val);
 
+    key = EXPORT_STR(key);
+    if (!NIL_P(val)) val = EXPORT_STR(val);
+
     rb_ary_push(env, hide_obj(rb_assoc_new(key, val)));
 
     return ST_CONTINUE;
@@ -2023,6 +2044,7 @@ rb_exec_fillarg(VALUE prog, int argc, VALUE *argv, VALUE env, VALUE opthash, VAL
         eargp->env_modification = env;
     }
 
+    prog = EXPORT_STR(prog);
     eargp->use_shell = argc == 0;
     if (eargp->use_shell)
         eargp->invoke.sh.shell_script = prog;
@@ -2155,8 +2177,13 @@ rb_exec_fillarg(VALUE prog, int argc, VALUE *argv, VALUE env, VALUE opthash, VAL
         argv_buf = rb_str_buf_new(0);
         hide_obj(argv_buf);
         for (i = 0; i < argc; i++) {
-            rb_str_buf_cat2(argv_buf, StringValueCStr(argv[i]));
-            rb_str_buf_cat(argv_buf, "", 1); /* append '\0' */
+	    VALUE arg = argv[i];
+	    const char *s = StringValueCStr(arg);
+#ifdef DEFAULT_PROCESS_ENCODING
+	    arg = EXPORT_STR(arg);
+	    s = RSTRING_PTR(arg);
+#endif
+	    rb_str_buf_cat(argv_buf, s, RSTRING_LEN(arg) + 1); /* include '\0' */
         }
         eargp->invoke.cmd.argv_buf = argv_buf;
     }

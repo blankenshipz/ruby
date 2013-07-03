@@ -29,6 +29,7 @@ extern "C" {
 
 #define SIGNED_INTEGER_TYPE_P(int_type) (0 > ((int_type)0)-1)
 #define SIGNED_INTEGER_MAX(sint_type) \
+  (sint_type) \
   ((((sint_type)1) << (sizeof(sint_type) * CHAR_BIT - 2)) | \
   ((((sint_type)1) << (sizeof(sint_type) * CHAR_BIT - 2)) - 1))
 #define SIGNED_INTEGER_MIN(sint_type) (-SIGNED_INTEGER_MAX(sint_type)-1)
@@ -196,9 +197,34 @@ PRINTF_ARGS(void ruby_debug_printf(const char*, ...), 1, 2);
 void Init_ext(void);
 
 /* encoding.c */
-ID rb_id_encoding(void);
+#ifdef RUBY_ENCODING_H
+enum ruby_preserved_encindex {
+    ENCINDEX_ASCII,
+    ENCINDEX_UTF_8,
+    ENCINDEX_US_ASCII,
 
-/* encoding.c */
+#ifndef NO_PRESERVED_ENCODING
+    /* preserved indexes */
+    ENCINDEX_UTF_16BE,
+    ENCINDEX_UTF_16LE,
+    ENCINDEX_UTF_32BE,
+    ENCINDEX_UTF_32LE,
+    ENCINDEX_UTF_16,
+    ENCINDEX_UTF_32,
+    ENCINDEX_UTF8_MAC,
+
+    /* for old options of regexp */
+    ENCINDEX_EUC_JP,
+    ENCINDEX_Windows_31J,
+#endif
+
+    ENCINDEX_BUILTIN_MAX
+};
+#endif
+#define rb_ascii8bit_encindex() ENCINDEX_ASCII
+#define rb_utf8_encindex()      ENCINDEX_UTF_8
+#define rb_usascii_encindex()   ENCINDEX_US_ASCII
+ID rb_id_encoding(void);
 void rb_gc_mark_encodings(void);
 
 /* error.c */
@@ -504,6 +530,9 @@ void rb_execarg_fixup(VALUE execarg_obj);
 int rb_execarg_run_options(const struct rb_execarg *e, struct rb_execarg *s, char* errmsg, size_t errmsg_buflen);
 VALUE rb_execarg_extract_options(VALUE execarg_obj, VALUE opthash);
 void rb_execarg_setenv(VALUE execarg_obj, VALUE env);
+
+/* util.c */
+extern const signed char ruby_digit36_to_number_table[];
 
 /* variable.c */
 void rb_gc_mark_global_tbl(void);

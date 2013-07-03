@@ -24,6 +24,10 @@
 #endif
 #include "ruby/util.h"
 
+#undef rb_ascii8bit_encindex
+#undef rb_utf8_encindex
+#undef rb_usascii_encindex
+
 #if defined __GNUC__ && __GNUC__ >= 4
 #pragma GCC visibility push(default)
 int rb_enc_register(const char *name, rb_encoding *encoding);
@@ -140,6 +144,25 @@ must_encoding(VALUE enc)
 		 rb_obj_classname(enc));
     }
     return index;
+}
+
+static rb_encoding *
+must_encindex(int index)
+{
+    rb_encoding *enc = rb_enc_from_index(index);
+    if (!enc) {
+	rb_raise(rb_eEncodingError, "encoding index out of bound: %d",
+		 index);
+    }
+    if (ENC_TO_ENCINDEX(enc) != index) {
+	rb_raise(rb_eEncodingError, "wrong encoding index %d for %s (expected %d)",
+		 index, rb_enc_name(enc), ENC_TO_ENCINDEX(enc));
+    }
+    if (enc_autoload_p(enc) && enc_autoload(enc) == -1) {
+	rb_loaderror("failed to load encoding (%s)",
+		     rb_enc_name(enc));
+    }
+    return enc;
 }
 
 int
@@ -519,13 +542,6 @@ rb_encdb_set_unicode(int index)
     rb_enc_from_index(index)->flags |= ONIGENC_FLAG_UNICODE;
 }
 
-enum {
-    ENCINDEX_ASCII,
-    ENCINDEX_UTF_8,
-    ENCINDEX_US_ASCII,
-    ENCINDEX_BUILTIN_MAX
-};
-
 extern rb_encoding OnigEncodingUTF_8;
 extern rb_encoding OnigEncodingUS_ASCII;
 
@@ -541,6 +557,20 @@ rb_enc_init(void)
     ENC_REGISTER(UTF_8);
     ENC_REGISTER(US_ASCII);
 #undef ENC_REGISTER
+#ifndef NO_PRESERVED_ENCODING
+#define ENCDB_REGISTER(name, enc) enc_register_at(ENCINDEX_##enc, name, NULL)
+    ENCDB_REGISTER("UTF-16BE", UTF_16BE);
+    ENCDB_REGISTER("UTF-16LE", UTF_16LE);
+    ENCDB_REGISTER("UTF-32BE", UTF_32BE);
+    ENCDB_REGISTER("UTF-32LE", UTF_32LE);
+    ENCDB_REGISTER("UTF-16", UTF_16);
+    ENCDB_REGISTER("UTF-32", UTF_32);
+    ENCDB_REGISTER("UTF8-MAC", UTF8_MAC);
+
+    ENCDB_REGISTER("EUC-JP", EUC_JP);
+    ENCDB_REGISTER("Windows-31J", Windows_31J);
+#undef ENCDB_REGISTER
+#endif
     enc_table.count = ENCINDEX_BUILTIN_MAX;
 }
 
@@ -739,12 +769,15 @@ void
 rb_enc_set_index(VALUE obj, int idx)
 {
     rb_check_frozen(obj);
+    must_encindex(idx);
     enc_set_index(obj, idx);
 }
 
 VALUE
 rb_enc_associate_index(VALUE obj, int idx)
 {
+    rb_encoding *enc;
+
 /*    enc_check_capable(obj);*/
     rb_check_frozen(obj);
     if (rb_enc_get_index(obj) == idx)
@@ -752,8 +785,9 @@ rb_enc_associate_index(VALUE obj, int idx)
     if (SPECIAL_CONST_P(obj)) {
 	rb_raise(rb_eArgError, "cannot set encoding");
     }
+    enc = must_encindex(idx);
     if (!ENC_CODERANGE_ASCIIONLY(obj) ||
-	!rb_enc_asciicompat(rb_enc_from_index(idx))) {
+	!rb_enc_asciicompat(enc)) {
 	ENC_CODERANGE_CLEAR(obj);
     }
     enc_set_index(obj, idx);
@@ -985,7 +1019,7 @@ enc_inspect(VALUE self)
     VALUE str = rb_sprintf("#<%s:%s%s>", rb_obj_classname(self),
 		      rb_enc_name((rb_encoding*)DATA_PTR(self)),
 		      (enc_dummy_p(self) ? " (dummy)" : ""));
-    ENCODING_CODERANGE_SET(str, rb_usascii_encindex(), ENC_CODERANGE_7BIT);
+    ENCODING_CODERANGE_SET(str, ENCINDEX_US_ASCII, ENC_CODERANGE_7BIT);
     return str;
 }
 
@@ -1200,9 +1234,9 @@ rb_locale_encindex(void)
     int idx;
 
     if (NIL_P(charmap))
-        idx = rb_usascii_encindex();
+        idx = ENCINDEX_US_ASCII;
     else if ((idx = rb_enc_find_index(StringValueCStr(charmap))) < 0)
-        idx = rb_ascii8bit_encindex();
+        idx = ENCINDEX_ASCII;
 
     if (rb_enc_registered("locale") < 0) enc_alias_internal("locale", idx);
 
@@ -1225,7 +1259,7 @@ enc_set_filesystem_encoding(void)
     char cp[sizeof(int) * 8 / 3 + 4];
     snprintf(cp, sizeof cp, "CP%d", AreFileApisANSI() ? GetACP() : GetOEMCP());
     idx = rb_enc_find_index(cp);
-    if (idx < 0) idx = rb_ascii8bit_encindex();
+    if (idx < 0) idx = ENCINDEX_ASCII;
 #else
     idx = rb_enc_to_index(rb_default_external_encoding());
 #endif
@@ -1239,7 +1273,7 @@ rb_filesystem_encindex(void)
 {
     int idx = rb_enc_registered("filesystem");
     if (idx < 0)
-	idx = rb_ascii8bit_encindex();
+	idx = ENCINDEX_ASCII;
     return idx;
 }
 

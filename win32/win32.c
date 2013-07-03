@@ -21,7 +21,6 @@
 
 #include "ruby/ruby.h"
 #include "ruby/encoding.h"
-#include "dln.h"
 #include <fcntl.h>
 #include <process.h>
 #include <sys/stat.h>
@@ -49,6 +48,25 @@
 #include "win32/dir.h"
 #define isdirsep(x) ((x) == '/' || (x) == '\\')
 
+static int w32_stati64(const char *path, struct stati64 *st, UINT cp);
+static char *w32_getenv(const char *name, UINT cp);
+
+#undef getenv
+#define DLN_FIND_EXTRA_ARG_DECL ,UINT cp
+#define DLN_FIND_EXTRA_ARG ,cp
+#define rb_w32_stati64(path, st) w32_stati64(path, st, cp)
+#define getenv(name) w32_getenv(name, cp)
+#define dln_find_exe_r rb_w32_udln_find_exe_r
+#define dln_find_file_r rb_w32_udln_find_file_r
+#include "dln.h"
+#include "dln_find.c"
+#undef MAXPATHLEN
+#undef rb_w32_stati64
+#undef dln_find_exe_r
+#undef dln_find_file_r
+#define dln_find_exe_r(fname, path, buf, size) rb_w32_udln_find_exe_r(fname, path, buf, size, cp)
+#define dln_find_file_r(fname, path, buf, size) rb_w32_udln_find_file_r(fname, path, buf, size, cp)
+
 #undef stat
 #undef fclose
 #undef close
@@ -73,7 +91,7 @@
 #define TO_SOCKET(x)	_get_osfhandle(x)
 
 static struct ChildRecord *CreateChild(const WCHAR *, const WCHAR *, SECURITY_ATTRIBUTES *, HANDLE, HANDLE, HANDLE, DWORD);
-static int has_redirection(const char *);
+static int has_redirection(const char *, UINT);
 int rb_w32_wait_events(HANDLE *events, int num, DWORD timeout);
 static int rb_w32_open_osfhandle(intptr_t osfhandle, int flags);
 static int wstati64(const WCHAR *path, struct stati64 *st);
@@ -353,12 +371,12 @@ translate_wchar(WCHAR *p, int from, int to)
 
 /* License: Ruby's */
 static inline char *
-translate_char(char *p, int from, int to)
+translate_char(char *p, int from, int to, UINT cp)
 {
     while (*p) {
 	if ((unsigned char)*p == from)
 	    *p = to;
-	p = CharNext(p);
+	p = CharNextExA(cp, p, 0);
     }
     return p;
 }
@@ -962,7 +980,7 @@ rb_w32_get_osfhandle(int fh)
 
 /* License: Ruby's */
 static int
-join_argv(char *cmd, char *const *argv, BOOL escape)
+join_argv(char *cmd, char *const *argv, BOOL escape, UINT cp, int backslash)
 {
     const char *p, *s;
     char *q, *const *t;
@@ -1008,7 +1026,7 @@ join_argv(char *cmd, char *const *argv, BOOL escape)
 		}
 	      default:
 		bs = 0;
-		p = CharNext(p) - 1;
+		p = CharNextExA(cp, p, 0) - 1;
 		break;
 	    }
 	}
@@ -1016,6 +1034,11 @@ join_argv(char *cmd, char *const *argv, BOOL escape)
 	if (quote) len++;
 	if (q) {
 	    memcpy(q, s, n);
+	    if (backslash > 0) {
+		--backslash;
+		q[n] = 0;
+		translate_char(q, '/', '\\', cp);
+	    }
 	    q += n;
 	    if (quote) *q++ = '"';
 	    *q++ = ' ';
@@ -1177,7 +1200,7 @@ static char *wstr_to_mbstr(UINT, const WCHAR *, int, long *);
 
 /* License: Artistic or GPL */
 rb_pid_t
-rb_w32_spawn(int mode, const char *cmd, const char *prog)
+w32_spawn(int mode, const char *cmd, const char *prog, UINT cp)
 {
     char fbuf[MAXPATHLEN];
     char *p = NULL;
@@ -1187,6 +1210,8 @@ rb_w32_spawn(int mode, const char *cmd, const char *prog)
     rb_pid_t ret = -1;
     VALUE v = 0;
     VALUE v2 = 0;
+    int sep = 0;
+    char *cmd_sep = NULL;
 
     if (check_spawn_mode(mode)) return -1;
 
@@ -1196,21 +1221,24 @@ rb_w32_spawn(int mode, const char *cmd, const char *prog)
 	}
 	else {
 	    shell = p;
-	    translate_char(p, '/', '\\');
+	    translate_char(p, '/', '\\', cp);
 	}
     }
     else {
 	int redir = -1;
 	int nt;
 	while (ISSPACE(*cmd)) cmd++;
-	if ((shell = getenv("RUBYSHELL")) && (redir = has_redirection(cmd))) {
-	    char *tmp = ALLOCV(v, strlen(shell) + strlen(cmd) + sizeof(" -c ") + 2);
-	    sprintf(tmp, "%s -c \"%s\"", shell, cmd);
+	if ((shell = getenv("RUBYSHELL")) && (redir = has_redirection(cmd, cp))) {
+	    size_t shell_len = strlen(shell);
+	    char *tmp = ALLOCV(v, shell_len + strlen(cmd) + sizeof(" -c ") + 2);
+	    memcpy(tmp, shell, shell_len + 1);
+	    translate_char(tmp, '/', '\\', cp);
+	    sprintf(tmp + shell_len, " -c \"%s\"", cmd);
 	    cmd = tmp;
 	}
 	else if ((shell = getenv("COMSPEC")) &&
 		 (nt = !is_command_com(shell),
-		  (redir < 0 ? has_redirection(cmd) : redir) ||
+		  (redir < 0 ? has_redirection(cmd, cp) : redir) ||
 		  is_internal_cmd(cmd, nt))) {
 	    char *tmp = ALLOCV(v, strlen(shell) + strlen(cmd) + sizeof(" /c ") + (nt ? 2 : 0));
 	    sprintf(tmp, nt ? "%s /c \"%s\"" : "%s /c %s", shell, cmd);
@@ -1218,27 +1246,44 @@ rb_w32_spawn(int mode, const char *cmd, const char *prog)
 	}
 	else {
 	    int len = 0, quote = (*cmd == '"') ? '"' : (*cmd == '\'') ? '\'' : 0;
-	    for (prog = cmd + !!quote;; prog = CharNext(prog)) {
+	    int slash = 0;
+	    for (prog = cmd + !!quote;; prog = CharNextExA(cp, prog, 0)) {
+		if (*prog == '/') slash = 1;
 		if (!*prog) {
 		    len = prog - cmd;
+		    if (slash) {
+			STRNDUPV(p, v2, cmd, len);
+			cmd = p;
+		    }
 		    shell = cmd;
 		    break;
 		}
 		if ((unsigned char)*prog == quote) {
 		    len = prog++ - cmd - 1;
-		    STRNDUPV(p, v2, cmd + 1, len);
+		    STRNDUPV(p, v2, cmd + 1 - slash, len + (slash ? strlen(prog) + 2 : 0));
+		    if (slash) {
+			cmd = p++;
+			sep = *(cmd_sep = &p[len + 1]);
+			*cmd_sep = '\0';
+		    }
 		    shell = p;
 		    break;
 		}
 		if (quote) continue;
 		if (ISSPACE(*prog) || strchr("<>|*?\"", *prog)) {
 		    len = prog - cmd;
-		    STRNDUPV(p, v2, cmd, len);
+		    STRNDUPV(p, v2, cmd, len + (slash ? strlen(prog) : 0));
+		    if (slash) {
+			cmd = p;
+			sep = *(cmd_sep = &p[len]);
+			*cmd_sep = '\0';
+		    }
 		    shell = p;
 		    break;
 		}
 	    }
 	    shell = dln_find_exe_r(shell, NULL, fbuf, sizeof(fbuf));
+	    if (p && slash) translate_char(p, '/', '\\', cp);
 	    if (!shell) {
 		shell = p ? p : cmd;
 	    }
@@ -1252,7 +1297,7 @@ rb_w32_spawn(int mode, const char *cmd, const char *prog)
 		    STRNDUPV(p, v2, shell, len);
 		    shell = p;
 		}
-		if (p) translate_char(p, '/', '\\');
+		if (p) translate_char(p, '/', '\\', cp);
 		if (is_batch(shell)) {
 		    int alen = strlen(prog);
 		    cmd = p = ALLOCV(v, len + alen + (quote ? 2 : 0) + 1);
@@ -1267,11 +1312,11 @@ rb_w32_spawn(int mode, const char *cmd, const char *prog)
 	}
     }
 
-    /* assume ACP */
-    if (!e && cmd && !(wcmd = acp_to_wstr(cmd, NULL))) e = E2BIG;
-    if (v) ALLOCV_END(v);
-    if (!e && shell && !(wshell = acp_to_wstr(shell, NULL))) e = E2BIG;
+    if (!e && shell && !(wshell = mbstr_to_wstr(cp, shell, -1, NULL))) e = E2BIG;
     if (v2) ALLOCV_END(v2);
+    if (cmd_sep) *cmd_sep = sep;
+    if (!e && cmd && !(wcmd = mbstr_to_wstr(cp, cmd, -1, NULL))) e = E2BIG;
+    if (v) ALLOCV_END(v);
 
     if (!e) {
 	ret = child_result(CreateChild(wcmd, wshell, NULL, NULL, NULL, NULL, 0), mode);
@@ -1282,9 +1327,24 @@ rb_w32_spawn(int mode, const char *cmd, const char *prog)
     return ret;
 }
 
+/* License: Ruby's */
+rb_pid_t
+rb_w32_spawn(int mode, const char *cmd, const char *prog)
+{
+    /* assume ACP */
+    return w32_spawn(mode, cmd, prog, filecp());
+}
+
+/* License: Ruby's */
+rb_pid_t
+rb_w32_uspawn(int mode, const char *cmd, const char *prog)
+{
+    return w32_spawn(mode, cmd, prog, CP_UTF8);
+}
+
 /* License: Artistic or GPL */
 rb_pid_t
-rb_w32_aspawn_flags(int mode, const char *prog, char *const *argv, DWORD flags)
+w32_aspawn_flags(int mode, const char *prog, char *const *argv, DWORD flags, UINT cp)
 {
     int c_switch = 0;
     size_t len;
@@ -1307,7 +1367,7 @@ rb_w32_aspawn_flags(int mode, const char *prog, char *const *argv, DWORD flags)
     }
     else if ((cmd = dln_find_exe_r(prog, NULL, fbuf, sizeof(fbuf)))) {
 	if (cmd == prog) strlcpy(cmd = fbuf, prog, sizeof(fbuf));
-	translate_char(cmd, '/', '\\');
+	translate_char(cmd, '/', '\\', cp);
 	prog = cmd;
     }
     else if (strchr(prog, '/')) {
@@ -1316,33 +1376,32 @@ rb_w32_aspawn_flags(int mode, const char *prog, char *const *argv, DWORD flags)
 	    strlcpy(cmd = fbuf, prog, sizeof(fbuf));
 	else
 	    STRNDUPV(cmd, v, prog, len);
-	translate_char(cmd, '/', '\\');
+	translate_char(cmd, '/', '\\', cp);
 	prog = cmd;
     }
     if (c_switch || is_batch(prog)) {
 	char *progs[2];
 	progs[0] = (char *)prog;
 	progs[1] = NULL;
-	len = join_argv(NULL, progs, ntcmd);
+	len = join_argv(NULL, progs, ntcmd, cp, 1);
 	if (c_switch) len += 3;
 	else ++argv;
-	if (argv[0]) len += join_argv(NULL, argv, ntcmd);
+	if (argv[0]) len += join_argv(NULL, argv, ntcmd, cp, 0);
 	cmd = ALLOCV(v, len);
-	join_argv(cmd, progs, ntcmd);
+	join_argv(cmd, progs, ntcmd, cp, 1);
 	if (c_switch) strlcat(cmd, " /c", len);
-	if (argv[0]) join_argv(cmd + strlcat(cmd, " ", len), argv, ntcmd);
+	if (argv[0]) join_argv(cmd + strlcat(cmd, " ", len), argv, ntcmd, cp, 0);
 	prog = c_switch ? shell : 0;
     }
     else {
-	len = join_argv(NULL, argv, FALSE);
+	len = join_argv(NULL, argv, FALSE, cp, 1);
 	cmd = ALLOCV(v, len);
-	join_argv(cmd, argv, FALSE);
+	join_argv(cmd, argv, FALSE, cp, 1);
     }
 
-    /* assume ACP */
-    if (!e && cmd && !(wcmd = acp_to_wstr(cmd, NULL))) e = E2BIG;
+    if (!e && cmd && !(wcmd = mbstr_to_wstr(cp, cmd, -1, NULL))) e = E2BIG;
     if (v) ALLOCV_END(v);
-    if (!e && prog && !(wprog = acp_to_wstr(prog, NULL))) e = E2BIG;
+    if (!e && prog && !(wprog = mbstr_to_wstr(cp, prog, -1, NULL))) e = E2BIG;
 
     if (!e) {
 	ret = child_result(CreateChild(wcmd, wprog, NULL, NULL, NULL, NULL, flags), mode);
@@ -1353,10 +1412,33 @@ rb_w32_aspawn_flags(int mode, const char *prog, char *const *argv, DWORD flags)
     return ret;
 }
 
+/* License: Ruby's */
+rb_pid_t
+rb_w32_aspawn_flags(int mode, const char *prog, char *const *argv, DWORD flags)
+{
+    /* assume ACP */
+    return w32_aspawn_flags(mode, prog, argv, flags, filecp());
+}
+
+/* License: Ruby's */
+rb_pid_t
+rb_w32_uaspawn_flags(int mode, const char *prog, char *const *argv, DWORD flags)
+{
+    return w32_aspawn_flags(mode, prog, argv, flags, CP_UTF8);
+}
+
+/* License: Ruby's */
 rb_pid_t
 rb_w32_aspawn(int mode, const char *prog, char *const *argv)
 {
     return rb_w32_aspawn_flags(mode, prog, argv, 0);
+}
+
+/* License: Ruby's */
+rb_pid_t
+rb_w32_uaspawn(int mode, const char *prog, char *const *argv)
+{
+    return rb_w32_uaspawn_flags(mode, prog, argv, 0);
 }
 
 /* License: Artistic or GPL */
@@ -1430,7 +1512,7 @@ cmdglob(NtCmdLineElement *patt, NtCmdLineElement **tail)
 
 /* License: Artistic or GPL */
 static int
-has_redirection(const char *cmd)
+has_redirection(const char *cmd, UINT cp)
 {
     char quote = '\0';
     const char *ptr;
@@ -1470,7 +1552,7 @@ has_redirection(const char *cmd)
 	  case '\\':
 	    ptr++;
 	  default:
-	    ptr = CharNext(ptr);
+	    ptr = CharNextExA(cp, ptr, 0);
 	    break;
 	}
     }
@@ -4243,7 +4325,7 @@ rb_w32_getcwd(char *buffer, int size)
         return NULL;
     }
 
-    translate_char(p, '\\', '/');
+    translate_char(p, '\\', '/', filecp());
 
     return p;
 }
@@ -4446,8 +4528,8 @@ wait(int *status)
 }
 
 /* License: Ruby's */
-char *
-rb_w32_ugetenv(const char *name)
+static char *
+w32_getenv(const char *name, UINT cp)
 {
     WCHAR *wenvarea, *wenv;
     int len = strlen(name);
@@ -4471,7 +4553,7 @@ rb_w32_ugetenv(const char *name)
     }
     for (wenv = wenvarea, wlen = 1; *wenv; wenv += lstrlenW(wenv) + 1)
 	wlen += lstrlenW(wenv) + 1;
-    uenvarea = wstr_to_mbstr(CP_UTF8, wenvarea, wlen, NULL);
+    uenvarea = wstr_to_mbstr(cp, wenvarea, wlen, NULL);
     FreeEnvironmentStringsW(wenvarea);
     if (!uenvarea)
 	return NULL;
@@ -4485,31 +4567,16 @@ rb_w32_ugetenv(const char *name)
 
 /* License: Ruby's */
 char *
+rb_w32_ugetenv(const char *name)
+{
+    return w32_getenv(name, CP_UTF8);
+}
+
+/* License: Ruby's */
+char *
 rb_w32_getenv(const char *name)
 {
-    int len = strlen(name);
-    char *env;
-
-    if (len == 0) return NULL;
-    if (uenvarea) {
-	free(uenvarea);
-	uenvarea = NULL;
-    }
-    if (envarea) {
-	FreeEnvironmentStrings(envarea);
-	envarea = NULL;
-    }
-    envarea = GetEnvironmentStrings();
-    if (!envarea) {
-	map_errno(GetLastError());
-	return NULL;
-    }
-
-    for (env = envarea; *env; env += strlen(env) + 1)
-	if (strncasecmp(env, name, len) == 0 && *(env + len) == '=')
-	    return env + len + 1;
-
-    return NULL;
+    return w32_getenv(name, CP_ACP);
 }
 
 /* License: Artistic or GPL */
@@ -4892,24 +4959,24 @@ wstati64(const WCHAR *path, struct stati64 *st)
 int
 rb_w32_ustati64(const char *path, struct stati64 *st)
 {
-    WCHAR *wpath;
-    int ret;
-
-    if (!(wpath = utf8_to_wstr(path, NULL)))
-	return -1;
-    ret = wstati64(wpath, st);
-    free(wpath);
-    return ret;
+    return w32_stati64(path, st, CP_UTF8);
 }
 
 /* License: Ruby's */
 int
 rb_w32_stati64(const char *path, struct stati64 *st)
 {
+    return w32_stati64(path, st, filecp());
+}
+
+/* License: Ruby's */
+static int
+w32_stati64(const char *path, struct stati64 *st, UINT cp)
+{
     WCHAR *wpath;
     int ret;
 
-    if (!(wpath = filecp_to_wstr(path, NULL)))
+    if (!(wpath = mbstr_to_wstr(cp, path, -1, NULL)))
 	return -1;
     ret = wstati64(wpath, st);
     free(wpath);

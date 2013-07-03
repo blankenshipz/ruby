@@ -5319,7 +5319,7 @@ io_strip_bom(VALUE io)
       case INT2FIX(0xFE):
 	if (NIL_P(b2 = rb_io_getbyte(io))) break;
 	if (b2 == INT2FIX(0xFF)) {
-	    return rb_enc_find_index("UTF-16BE");
+	    return ENCINDEX_UTF_16BE;
 	}
 	rb_io_ungetbyte(io, b2);
 	break;
@@ -5330,14 +5330,14 @@ io_strip_bom(VALUE io)
 	    b3 = rb_io_getbyte(io);
 	    if (b3 == INT2FIX(0) && !NIL_P(b4 = rb_io_getbyte(io))) {
 		if (b4 == INT2FIX(0)) {
-		    return rb_enc_find_index("UTF-32LE");
+		    return ENCINDEX_UTF_32LE;
 		}
 		rb_io_ungetbyte(io, b4);
 		rb_io_ungetbyte(io, b3);
 	    }
 	    else {
 		rb_io_ungetbyte(io, b3);
-		return rb_enc_find_index("UTF-16LE");
+		return ENCINDEX_UTF_16LE;
 	    }
 	}
 	rb_io_ungetbyte(io, b2);
@@ -5348,7 +5348,7 @@ io_strip_bom(VALUE io)
 	if (b2 == INT2FIX(0) && !NIL_P(b3 = rb_io_getbyte(io))) {
 	    if (b3 == INT2FIX(0xFE) && !NIL_P(b4 = rb_io_getbyte(io))) {
 		if (b4 == INT2FIX(0xFF)) {
-		    return rb_enc_find_index("UTF-32BE");
+		    return ENCINDEX_UTF_32BE;
 		}
 		rb_io_ungetbyte(io, b4);
 	    }
@@ -5547,8 +5547,8 @@ rb_pipe(int *pipes)
 
 #ifdef _WIN32
 #define HAVE_SPAWNV 1
-#define spawnv(mode, cmd, args) rb_w32_aspawn((mode), (cmd), (args))
-#define spawn(mode, cmd) rb_w32_spawn((mode), (cmd), 0)
+#define spawnv(mode, cmd, args) rb_w32_uaspawn((mode), (cmd), (args))
+#define spawn(mode, cmd) rb_w32_uspawn((mode), (cmd), 0)
 #endif
 
 #if defined(HAVE_FORK) || defined(HAVE_SPAWNV)

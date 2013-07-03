@@ -63,10 +63,6 @@ char *strchr(char*,char);
 
 #include "ruby/util.h"
 
-#if !defined HAVE_LSTAT && !defined lstat
-#define lstat stat
-#endif
-
 /* define system APIs */
 #ifdef _WIN32
 #undef chdir
@@ -91,9 +87,7 @@ char *strchr(char*,char);
 rb_encoding *
 rb_utf8mac_encoding(void)
 {
-    static rb_encoding *utf8mac;
-    if (!utf8mac) utf8mac = rb_enc_find("UTF8-MAC");
-    return utf8mac;
+    return rb_enc_from_index(ENCINDEX_UTF8_MAC);
 }
 
 static inline int
@@ -1035,18 +1029,25 @@ sys_warning_1(VALUE mesg)
  */
 #define to_be_ignored(e) ((e) == ENOENT || (e) == ENOTDIR)
 
+#ifdef _WIN32
+#define STAT(p, s)	rb_w32_ustati64((p), (s))
+#else
+#define STAT(p, s)	stat((p), (s))
+#endif
+
 /* System call with warning */
 static int
 do_stat(const char *path, struct stat *pst, int flags)
 
 {
-    int ret = stat(path, pst);
+    int ret = STAT(path, pst);
     if (ret < 0 && !to_be_ignored(errno))
 	sys_warning(path);
 
     return ret;
 }
 
+#if defined HAVE_LSTAT || defined lstat
 static int
 do_lstat(const char *path, struct stat *pst, int flags)
 {
@@ -1056,6 +1057,9 @@ do_lstat(const char *path, struct stat *pst, int flags)
 
     return ret;
 }
+#else
+#define do_lstat do_stat
+#endif
 
 static DIR *
 do_opendir(const char *path, int flags, rb_encoding *enc)

@@ -199,21 +199,21 @@ module MakeMakefile
       ]
     elsif $configure_args.has_key?('--vendor')
       dirs = [
-        ['BINDIR',        '$(DESTDIR)$(bindir)'],
-        ['RUBYCOMMONDIR', '$(DESTDIR)$(vendordir)$(target_prefix)'],
-        ['RUBYLIBDIR',    '$(DESTDIR)$(vendorlibdir)$(target_prefix)'],
-        ['RUBYARCHDIR',   '$(DESTDIR)$(vendorarchdir)$(target_prefix)'],
-        ['HDRDIR',        '$(DESTDIR)$(rubyhdrdir)/ruby$(target_prefix)'],
-        ['ARCHHDRDIR',    '$(DESTDIR)$(rubyhdrdir)/$(arch)/ruby$(target_prefix)'],
+        ['BINDIR',        '$(bindir)'],
+        ['RUBYCOMMONDIR', '$(vendordir)$(target_prefix)'],
+        ['RUBYLIBDIR',    '$(vendorlibdir)$(target_prefix)'],
+        ['RUBYARCHDIR',   '$(vendorarchdir)$(target_prefix)'],
+        ['HDRDIR',        '$(rubyhdrdir)/ruby$(target_prefix)'],
+        ['ARCHHDRDIR',    '$(rubyhdrdir)/$(arch)/ruby$(target_prefix)'],
       ]
     else
       dirs = [
-        ['BINDIR',        '$(DESTDIR)$(bindir)'],
-        ['RUBYCOMMONDIR', '$(DESTDIR)$(sitedir)$(target_prefix)'],
-        ['RUBYLIBDIR',    '$(DESTDIR)$(sitelibdir)$(target_prefix)'],
-        ['RUBYARCHDIR',   '$(DESTDIR)$(sitearchdir)$(target_prefix)'],
-        ['HDRDIR',        '$(DESTDIR)$(rubyhdrdir)/ruby$(target_prefix)'],
-        ['ARCHHDRDIR',    '$(DESTDIR)$(rubyhdrdir)/$(arch)/ruby$(target_prefix)'],
+        ['BINDIR',        '$(bindir)'],
+        ['RUBYCOMMONDIR', '$(sitedir)$(target_prefix)'],
+        ['RUBYLIBDIR',    '$(sitelibdir)$(target_prefix)'],
+        ['RUBYARCHDIR',   '$(sitearchdir)$(target_prefix)'],
+        ['HDRDIR',        '$(rubyhdrdir)/ruby$(target_prefix)'],
+        ['ARCHHDRDIR',    '$(rubyhdrdir)/$(arch)/ruby$(target_prefix)'],
       ]
     end
     dirs << ['target_prefix', (target_prefix ? "/#{target_prefix}" : "")]
@@ -1747,6 +1747,7 @@ SRC
       # default to package specific config command, as a last resort.
       get = proc {|opt| `#{pkgconfig} --#{opt}`.strip}
     end
+    orig_ldflags = $LDFLAGS
     if get and option
       get[option]
     elsif get and try_ldflags(ldflags = get['libs'])
@@ -1754,7 +1755,7 @@ SRC
       libs = get['libs-only-l']
       ldflags = (Shellwords.shellwords(ldflags) - Shellwords.shellwords(libs)).quote.join(" ")
       $CFLAGS += " " << cflags
-      $LDFLAGS += " " << ldflags
+      $LDFLAGS = [orig_ldflags, ldflags].join(' ')
       $libs += " " << libs
       Logging::message "package configuration for %s\n", pkg
       Logging::message "cflags: %s\nldflags: %s\nlibs: %s\n\n",
@@ -1769,7 +1770,6 @@ SRC
   # :stopdoc:
 
   def with_destdir(dir)
-    return dir unless $extmk
     dir = dir.sub($dest_prefix_pattern, '')
     /\A\$[\(\{]/ =~ dir ? dir : "$(DESTDIR)"+dir
   end
