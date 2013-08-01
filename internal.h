@@ -21,6 +21,8 @@ extern "C" {
 
 #define numberof(array) ((int)(sizeof(array) / sizeof((array)[0])))
 
+#define STATIC_ASSERT(name, expr) typedef int static_assert_##name##_check[1 - 2*!(expr)]
+
 #define GCC_VERSION_SINCE(major, minor, patchlevel) \
   (defined(__GNUC__) && !defined(__INTEL_COMPILER) && \
    ((__GNUC__ > (major)) ||  \
@@ -54,33 +56,12 @@ extern "C" {
 #define MUL_OVERFLOW_LONG_P(a, b) MUL_OVERFLOW_SIGNED_INTEGER_P(a, b, LONG_MIN, LONG_MAX)
 #define MUL_OVERFLOW_INT_P(a, b) MUL_OVERFLOW_SIGNED_INTEGER_P(a, b, INT_MIN, INT_MAX)
 
-/* "MS" in MSWORD and MSBYTE means "most significant" */
-/* "LS" in LSWORD and LSBYTE means "least significant" */
-/* For rb_integer_pack and rb_integer_unpack: */
-#define INTEGER_PACK_MSWORD_FIRST       0x01
-#define INTEGER_PACK_LSWORD_FIRST       0x02
-#define INTEGER_PACK_MSBYTE_FIRST       0x10
-#define INTEGER_PACK_LSBYTE_FIRST       0x20
-#define INTEGER_PACK_NATIVE_BYTE_ORDER  0x40
-#define INTEGER_PACK_2COMP              0x80
-#define INTEGER_PACK_FORCE_GENERIC_IMPLEMENTATION     0x400
-/* For rb_integer_unpack: */
-#define INTEGER_PACK_FORCE_BIGNUM       0x100
-#define INTEGER_PACK_NEGATIVE           0x200
-/* Combinations: */
-#define INTEGER_PACK_LITTLE_ENDIAN \
-    (INTEGER_PACK_LSWORD_FIRST | \
-     INTEGER_PACK_LSBYTE_FIRST)
-#define INTEGER_PACK_BIG_ENDIAN \
-    (INTEGER_PACK_MSWORD_FIRST | \
-     INTEGER_PACK_MSBYTE_FIRST)
-
 #ifndef swap16
 # define swap16(x)      ((uint16_t)((((x)&0xFF)<<8) | (((x)>>8)&0xFF)))
 #endif
 
 #ifndef swap32
-# if GCC_VERSION_SINCE(4,3,0)
+# ifdef HAVE_BUILTIN___BUILTIN_BSWAP32
 #  define swap32(x) __builtin_bswap32(x)
 # endif
 #endif
@@ -93,7 +74,7 @@ extern "C" {
 #endif
 
 #ifndef swap64
-# if GCC_VERSION_SINCE(4,3,0)
+# ifdef HAVE_BUILTIN___BUILTIN_BSWAP64
 #  define swap64(x) __builtin_bswap64(x)
 # endif
 #endif
@@ -160,9 +141,6 @@ VALUE rb_big_fdiv(VALUE x, VALUE y);
 VALUE rb_big_uminus(VALUE x);
 VALUE rb_integer_float_cmp(VALUE x, VALUE y);
 VALUE rb_integer_float_eq(VALUE x, VALUE y);
-size_t rb_absint_size(VALUE val, int *nlz_bits_ret);
-size_t rb_absint_numwords(VALUE val, size_t word_numbits, size_t *nlz_bits_ret);
-int rb_absint_singlebit_p(VALUE val);
 
 /* class.c */
 VALUE rb_obj_methods(int argc, VALUE *argv, VALUE obj);
@@ -203,7 +181,6 @@ enum ruby_preserved_encindex {
     ENCINDEX_UTF_8,
     ENCINDEX_US_ASCII,
 
-#ifndef NO_PRESERVED_ENCODING
     /* preserved indexes */
     ENCINDEX_UTF_16BE,
     ENCINDEX_UTF_16LE,
@@ -216,7 +193,6 @@ enum ruby_preserved_encindex {
     /* for old options of regexp */
     ENCINDEX_EUC_JP,
     ENCINDEX_Windows_31J,
-#endif
 
     ENCINDEX_BUILTIN_MAX
 };
@@ -246,7 +222,8 @@ void rb_call_end_proc(VALUE data);
 void rb_mark_end_proc(void);
 
 /* file.c */
-VALUE rb_home_dir(const char *user, VALUE result);
+VALUE rb_home_dir_of(VALUE user, VALUE result);
+VALUE rb_default_home_dir(VALUE result);
 VALUE rb_realpath_internal(VALUE basedir, VALUE path, int strict);
 void rb_file_const(const char*, VALUE);
 int rb_file_load_ok(const char *);
@@ -278,6 +255,7 @@ void rb_w32_init_file(void);
 void Init_heap(void);
 void *ruby_mimmalloc(size_t size);
 void rb_objspace_set_event_hook(const rb_event_flag_t event);
+void rb_gc_writebarrier_remember_promoted(VALUE obj);
 
 /* hash.c */
 struct st_table *rb_hash_tbl_raw(VALUE hash);
@@ -356,6 +334,7 @@ void rb_gc_mark_symbols(void);
 /* proc.c */
 VALUE rb_proc_location(VALUE self);
 st_index_t rb_hash_proc(st_index_t hash, VALUE proc);
+int rb_block_arity(void);
 
 /* process.c */
 #define RB_MAX_GROUPS (65536)
@@ -439,6 +418,8 @@ VALUE rb_str_quote_unprintable(VALUE);
 VALUE rb_id_quote_unprintable(ID);
 #define QUOTE(str) rb_str_quote_unprintable(str)
 #define QUOTE_ID(id) rb_id_quote_unprintable(id)
+void rb_str_fill_terminator(VALUE str, const int termlen);
+VALUE rb_str_locktmp_ensure(VALUE str, VALUE (*func)(VALUE), VALUE arg);
 
 /* struct.c */
 VALUE rb_struct_init_copy(VALUE copy, VALUE s);
@@ -513,8 +494,11 @@ const char *rb_objspace_data_type_name(VALUE obj);
 VALUE rb_thread_io_blocking_region(rb_blocking_function_t *func, void *data1, int fd);
 
 /* bignum.c */
-int rb_integer_pack(VALUE val, void *words, size_t numwords, size_t wordsize, size_t nails, int flags);
-VALUE rb_integer_unpack(const void *words, size_t numwords, size_t wordsize, size_t nails, int flags);
+VALUE rb_big_mul_normal(VALUE x, VALUE y);
+VALUE rb_big_mul_balance(VALUE x, VALUE y);
+VALUE rb_big_mul_karatsuba(VALUE x, VALUE y);
+VALUE rb_big_mul_toom3(VALUE x, VALUE y);
+VALUE rb_big_sq_fast(VALUE x);
 
 /* io.c */
 void rb_maygvl_fd_fix_cloexec(int fd);

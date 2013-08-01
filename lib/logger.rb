@@ -289,8 +289,7 @@ class Logger
   def fatal?; @level <= FATAL; end
 
   #
-  # === Synopsis
-  #
+  # :call-seq:
   #   Logger.new(name, shift_age = 7, shift_size = 1048576)
   #   Logger.new(name, shift_age = 'weekly')
   #
@@ -322,8 +321,7 @@ class Logger
   end
 
   #
-  # === Synopsis
-  #
+  # :call-seq:
   #   Logger#add(severity, message = nil, progname = nil) { ... }
   #
   # === Args
@@ -340,8 +338,6 @@ class Logger
   #   Can be omitted.  Called to get a message string if +message+ is nil.
   #
   # === Return
-  #
-  # +true+ if successful, +false+ otherwise.
   #
   # When the given severity is not high enough (for this particular logger),
   # log no message, and return +true+.
@@ -715,8 +711,7 @@ private
     attr_reader :appname
 
     #
-    # == Synopsis
-    #
+    # :call-seq:
     #   Logger::Application.new(appname = '')
     #
     # == Args

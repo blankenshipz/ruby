@@ -10,7 +10,8 @@ class Gem::Commands::PristineCommand < Gem::Command
   def initialize
     super 'pristine',
           'Restores installed gems to pristine condition from files located in the gem cache',
-          :version => Gem::Requirement.default, :extensions => true,
+          :version => Gem::Requirement.default,
+          :extensions => true,
           :all => false
 
     add_option('--all',
@@ -29,6 +30,12 @@ class Gem::Commands::PristineCommand < Gem::Command
       options[:only_executables] = value
     end
 
+    add_option('-E', '--[no-]env-shebang',
+               'Rewrite executables with a shebang',
+               'of /usr/bin/env') do |value, options|
+      options[:env_shebang] = value
+    end
+
     add_version_option('restore to', 'pristine condition')
   end
 
@@ -37,7 +44,7 @@ class Gem::Commands::PristineCommand < Gem::Command
   end
 
   def defaults_str # :nodoc:
-    "--all --extensions"
+    '--extensions'
   end
 
   def description # :nodoc:
@@ -52,8 +59,8 @@ for the gem are regenerated.
 If the cached gem cannot be found, you will need to use `gem install` to
 revert the gem.
 
-If --no-extensions is provided pristine will not attempt to restore gems with
-extensions.
+If --no-extensions is provided pristine will not attempt to restore gems
+with extensions.
     EOF
   end
 
@@ -103,16 +110,21 @@ extensions.
         Gem::RemoteFetcher.fetcher.download_to_cache dep
       end
 
-      # TODO use installer options
-      install_defaults = Gem::ConfigFile::PLATFORM_DEFAULTS['install']
-      installer_env_shebang = install_defaults.to_s['--env-shebang']
+      env_shebang =
+        if options.include? :env_shebang then
+          options[:env_shebang]
+        else
+          install_defaults = Gem::ConfigFile::PLATFORM_DEFAULTS['install']
+          install_defaults.to_s['--env-shebang']
+        end
 
       installer = Gem::Installer.new(gem,
                                      :wrappers => true,
                                      :force => true,
                                      :install_dir => spec.base_dir,
-                                     :env_shebang => installer_env_shebang,
+                                     :env_shebang => env_shebang,
                                      :build_args => spec.build_args)
+
       if options[:only_executables] then
         installer.generate_bin
       else

@@ -18,24 +18,20 @@ class TestRequire < Test::Unit::TestCase
       t.puts "dummy"
       t.close
 
-      assert_in_out_err([], <<-INPUT, %w(:ok), [])
+      assert_separately([], <<-INPUT)
         $:.replace([IO::NULL])
-        begin
+        assert_raise(LoadError) do
           require \"#{ t.path }\"
-        rescue LoadError
-          p :ok
         end
       INPUT
     }
   end
 
   def test_require_too_long_filename
-    assert_in_out_err(["RUBYOPT"=>nil], <<-INPUT, %w(:ok), [])
+    assert_separately(["RUBYOPT"=>nil], <<-INPUT)
       $:.replace([IO::NULL])
-      begin
+      assert_raise(LoadError) do
         require '#{ "foo/" * 10000 }foo'
-      rescue LoadError
-        p :ok
       end
     INPUT
 
@@ -61,8 +57,19 @@ class TestRequire < Test::Unit::TestCase
 
   def test_require_nonascii_path
     bug8165 = '[ruby-core:53733] [Bug #8165]'
+    encoding = 'filesystem'
+    assert_require_nonascii_path(encoding, bug8165)
+  end
+
+  def test_require_nonascii_path_utf8
+    bug8676 = '[ruby-core:56136] [Bug #8676]'
+    encoding = Encoding::UTF_8
+    return if Encoding.find('filesystem') == encoding
+    assert_require_nonascii_path(encoding, bug8676)
+  end
+
+  def assert_require_nonascii_path(encoding, bug)
     Dir.mktmpdir {|tmp|
-      encoding = /mswin|mingw/ =~ RUBY_PLATFORM ? 'filesystem' : 'UTF-8'
       dir = "\u3042" * 5
       begin
         require_path = File.join(tmp, dir, 'foo.rb').encode(encoding)
@@ -71,14 +78,21 @@ class TestRequire < Test::Unit::TestCase
       end
       Dir.mkdir(File.dirname(require_path))
       open(require_path, "wb") {}
-      assert_in_out_err([], <<-INPUT, %w(:ok), [], bug8165)
-        # coding: #{encoding}
+      begin
+        load_path = $:.dup
+        features = $".dup
         # leave paths for require encoding objects
-        enc_path = Regexp.new(Regexp.escape(RUBY_PLATFORM))
-        $:.replace([IO::NULL] + $:.reject {|path| enc_path !~ path})
-        p :ok if require '#{require_path}'
-        p :ng if require '#{require_path}'
-      INPUT
+        bug = "#{bug} require #{encoding} path"
+        require_path = "#{require_path}"
+        $:.clear
+        assert_nothing_raised(LoadError, bug) {
+          assert(require(require_path), bug)
+          assert(!require(require_path), bug)
+        }
+      ensure
+        $:.replace(load_path)
+        $".replace(features)
+      end
     }
   end
 
@@ -157,33 +171,24 @@ class TestRequire < Test::Unit::TestCase
       return
     end
 
-    assert_in_out_err([], <<-INPUT, %w(:ok), [])
+    assert_separately([], <<-INPUT)
       BasicSocket = 1
-      begin
+      assert_raise(TypeError) do
         require 'socket'
-        p :ng
-      rescue TypeError
-        p :ok
       end
     INPUT
 
-    assert_in_out_err([], <<-INPUT, %w(:ok), [])
+    assert_separately([], <<-INPUT)
       class BasicSocket; end
-      begin
+      assert_raise(TypeError) do
         require 'socket'
-        p :ng
-      rescue TypeError
-        p :ok
       end
     INPUT
 
-    assert_in_out_err([], <<-INPUT, %w(:ok), [])
+    assert_separately([], <<-INPUT)
       class BasicSocket < IO; end
-      begin
+      assert_nothing_raised do
         require 'socket'
-        p :ok
-      rescue Exception
-        p :ng
       end
     INPUT
   end
@@ -195,36 +200,27 @@ class TestRequire < Test::Unit::TestCase
       return
     end
 
-    assert_in_out_err([], <<-INPUT, %w(:ok), [])
+    assert_separately([], <<-INPUT)
       module Zlib; end
       Zlib::Error = 1
-      begin
+      assert_raise(TypeError) do
         require 'zlib'
-        p :ng
-      rescue TypeError
-        p :ok
       end
     INPUT
 
-    assert_in_out_err([], <<-INPUT, %w(:ok), [])
+    assert_separately([], <<-INPUT)
       module Zlib; end
       class Zlib::Error; end
-      begin
+      assert_raise(NameError) do
         require 'zlib'
-        p :ng
-      rescue NameError
-        p :ok
       end
     INPUT
 
-    assert_in_out_err([], <<-INPUT, %w(:ok), [])
+    assert_separately([], <<-INPUT)
       module Zlib; end
       class Zlib::Error < StandardError; end
-      begin
+      assert_nothing_raised do
         require 'zlib'
-        p :ok
-      rescue Exception
-        p :ng
       end
     INPUT
   end
@@ -236,13 +232,10 @@ class TestRequire < Test::Unit::TestCase
       return
     end
 
-    assert_in_out_err([], <<-INPUT, %w(:ok), [])
+    assert_separately([], <<-INPUT)
       Zlib = 1
-      begin
+      assert_raise(TypeError) do
         require 'zlib'
-        p :ng
-      rescue TypeError
-        p :ok
       end
     INPUT
   end
@@ -254,15 +247,12 @@ class TestRequire < Test::Unit::TestCase
       return
     end
 
-    assert_in_out_err([], <<-INPUT, %w(:ok), [])
+    assert_separately([], <<-INPUT)
       class BasicSocket < IO; end
       class Socket < BasicSocket; end
       Socket::Constants = 1
-      begin
+      assert_raise(TypeError) do
         require 'socket'
-        p :ng
-      rescue TypeError
-        p :ok
       end
     INPUT
   end
@@ -304,47 +294,36 @@ class TestRequire < Test::Unit::TestCase
       abs_dir, file = File.split(t.path)
       abs_dir = File.expand_path(abs_dir).untaint
 
-      assert_in_out_err([], <<-INPUT, %w(:ok), [])
+      assert_separately([], <<-INPUT)
         abs_dir = "#{ abs_dir }"
         $: << abs_dir
-        require "#{ file }"
-        p :ok
+        assert_nothing_raised {require "#{ file }"}
       INPUT
 
-      assert_in_out_err([], <<-INPUT, %w(:ok), [])
+      assert_separately([], <<-INPUT)
         abs_dir = "#{ abs_dir }"
         $: << abs_dir.taint
-        require "#{ file }"
-        p :ok
+        assert_nothing_raised {require "#{ file }"}
       INPUT
 
-      assert_in_out_err([], <<-INPUT, %w(:ok), [])
-        abs_dir = "#{ abs_dir }"
-        $: << abs_dir.taint
-        $SAFE = 1
-        begin
-          require "#{ file }"
-        rescue SecurityError
-          p :ok
-        end
-      INPUT
-
-      assert_in_out_err([], <<-INPUT, %w(:ok), [])
+      assert_separately([], <<-INPUT)
         abs_dir = "#{ abs_dir }"
         $: << abs_dir.taint
         $SAFE = 1
-        begin
-          require "#{ file }"
-        rescue SecurityError
-          p :ok
-        end
+        assert_raise(SecurityError) {require "#{ file }"}
       INPUT
 
-      assert_in_out_err([], <<-INPUT, %w(:ok), [])
+      assert_separately([], <<-INPUT)
+        abs_dir = "#{ abs_dir }"
+        $: << abs_dir.taint
+        $SAFE = 1
+        assert_raise(SecurityError) {require "#{ file }"}
+      INPUT
+
+      assert_separately([], <<-INPUT)
         abs_dir = "#{ abs_dir }"
         $: << abs_dir << 'elsewhere'.taint
-        require "#{ file }"
-        p :ok
+        assert_nothing_raised {require "#{ file }"}
       INPUT
     }
   end

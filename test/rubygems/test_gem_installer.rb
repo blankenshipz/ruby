@@ -4,6 +4,7 @@ class TestGemInstaller < Gem::InstallerTestCase
 
   def setup
     super
+    common_installer_setup
 
     if __name__ =~ /^test_install(_|$)/ then
       FileUtils.rm_r @spec.gem_dir
@@ -14,6 +15,8 @@ class TestGemInstaller < Gem::InstallerTestCase
   end
 
   def teardown
+    common_installer_teardown
+
     super
 
     Gem.configuration = @config
@@ -50,95 +53,6 @@ load Gem.bin_path('a', 'executable', version)
 
     wrapper = @installer.app_script_text 'executable'
     assert_equal expected, wrapper
-  end
-
-  def test_build_extensions_none
-    use_ui @ui do
-      @installer.build_extensions
-    end
-
-    assert_equal '', @ui.output
-    assert_equal '', @ui.error
-
-    refute File.exist?('gem_make.out')
-  end
-
-  def test_build_extensions_extconf_bad
-    @installer.spec = @spec
-    @spec.extensions << 'extconf.rb'
-
-    e = assert_raises Gem::Installer::ExtensionBuildError do
-      use_ui @ui do
-        @installer.build_extensions
-      end
-    end
-
-    assert_match(/\AERROR: Failed to build gem native extension.$/, e.message)
-
-    assert_equal "Building native extensions.  This could take a while...\n",
-                 @ui.output
-    assert_equal '', @ui.error
-
-    gem_make_out = File.join @gemhome, 'gems', @spec.full_name, 'gem_make.out'
-
-    assert_match %r%#{Regexp.escape Gem.ruby} extconf\.rb%,
-                 File.read(gem_make_out)
-    assert_match %r%#{Regexp.escape Gem.ruby}: No such file%,
-                 File.read(gem_make_out)
-  end
-
-  def test_build_extensions_unsupported
-    @installer.spec = @spec
-    FileUtils.mkdir_p @spec.gem_dir
-    gem_make_out = File.join @spec.gem_dir, 'gem_make.out'
-    @spec.extensions << nil
-
-    e = assert_raises Gem::Installer::ExtensionBuildError do
-      use_ui @ui do
-        @installer.build_extensions
-      end
-    end
-
-    assert_match(/^\s*No builder for extension ''$/, e.message)
-
-    assert_equal "Building native extensions.  This could take a while...\n",
-                 @ui.output
-    assert_equal '', @ui.error
-
-    assert_equal "No builder for extension ''\n", File.read(gem_make_out)
-  ensure
-    FileUtils.rm_f gem_make_out
-  end
-
-  def test_build_extensions_with_build_args
-    args = ["--aa", "--bb"]
-    @installer.build_args = args
-    @installer.spec = @spec
-    @spec.extensions << 'extconf.rb'
-
-    File.open File.join(@spec.gem_dir, "extconf.rb"), "w" do |f|
-      f.write <<-'RUBY'
-        puts "IN EXTCONF"
-        extconf_args = File.join File.dirname(__FILE__), 'extconf_args'
-        File.open extconf_args, 'w' do |f|
-          f.puts ARGV.inspect
-        end
-
-        File.open 'Makefile', 'w' do |f|
-          f.puts "default:\n\techo built"
-          f.puts "install:\n\techo installed"
-        end
-      RUBY
-    end
-
-    use_ui @ui do
-      @installer.build_extensions
-    end
-
-    path = File.join @spec.gem_dir, "extconf_args"
-
-    assert_equal args.inspect, File.read(path).strip
-    assert File.directory? File.join(@spec.gem_dir, 'lib')
   end
 
   def test_check_executable_overwrite
@@ -300,6 +214,8 @@ gem 'other', version
   end
 
   def test_ensure_loadable_spec_security_policy
+    skip 'openssl is missing' unless defined?(OpenSSL::SSL)
+
     _, a_gem = util_gem 'a', 2 do |s|
       s.add_dependency 'garbage ~> 5'
     end
@@ -1341,7 +1257,7 @@ gem 'other', version
     assert File.exist?(File.join(dest, 'bin', 'executable'))
   end
 
-  def test_write_build_args
+  def test_write_build_info_file
     refute_path_exists @spec.build_info_file
 
     @installer.build_args = %w[
@@ -1357,12 +1273,26 @@ gem 'other', version
     assert_equal expected, File.read(@spec.build_info_file)
   end
 
-  def test_write_build_args_empty
+  def test_write_build_info_file_empty
     refute_path_exists @spec.build_info_file
 
     @installer.write_build_info_file
 
     refute_path_exists @spec.build_info_file
+  end
+
+  def test_write_build_info_file_install_dir
+    installer = Gem::Installer.new @gem, :install_dir => "#{@gemhome}2"
+
+    installer.build_args = %w[
+      --with-libyaml-dir /usr/local/Cellar/libyaml/0.1.4
+    ]
+
+    installer.write_build_info_file
+
+    refute_path_exists @spec.build_info_file
+    assert_path_exists \
+      File.join("#{@gemhome}2", 'build_info', "#{@spec.full_name}.info")
   end
 
   def test_write_cache_file
@@ -1413,6 +1343,30 @@ gem 'other', version
 
   def test_dir
     assert_match %r!/gemhome/gems/a-2$!, @installer.dir
+  end
+
+  def test_default_gem
+    FileUtils.rm_f File.join(Gem.dir, 'specifications')
+
+    @installer.wrappers = true
+    @installer.options[:install_as_default] = true
+    @installer.gem_dir = util_gem_dir @spec
+    @installer.generate_bin
+
+    use_ui @ui do
+      @installer.install
+    end
+
+    assert File.directory? util_inst_bindir
+    installed_exec = File.join util_inst_bindir, 'executable'
+    assert File.exist? installed_exec
+
+    assert File.directory? File.join(Gem.dir, 'specifications')
+    assert File.directory? File.join(Gem.dir, 'specifications', 'default')
+
+    default_spec = eval File.read File.join(Gem.dir, 'specifications', 'default', 'a-2.gemspec')
+    assert_equal Gem::Version.new("2"), default_spec.version
+    assert_equal ['bin/executable'], default_spec.files
   end
 
   def old_ruby_required

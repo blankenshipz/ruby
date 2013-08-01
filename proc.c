@@ -269,7 +269,7 @@ binding_memsize(const void *ptr)
     return ptr ? sizeof(rb_binding_t) : 0;
 }
 
-static const rb_data_type_t binding_data_type = {
+const rb_data_type_t ruby_binding_data_type = {
     "binding",
     {
 	binding_mark,
@@ -283,7 +283,7 @@ binding_alloc(VALUE klass)
 {
     VALUE obj;
     rb_binding_t *bind;
-    obj = TypedData_Make_Struct(klass, rb_binding_t, &binding_data_type, bind);
+    obj = TypedData_Make_Struct(klass, rb_binding_t, &ruby_binding_data_type, bind);
     return obj;
 }
 
@@ -621,6 +621,7 @@ rb_proc_call_with_block(VALUE self, int argc, VALUE *argv, VALUE pass_procval)
     return vret;
 }
 
+
 /*
  *  call-seq:
  *     prc.arity -> fixnum
@@ -669,19 +670,10 @@ rb_iseq_min_max_arity(const rb_iseq_t *iseq, int *max)
     return iseq->argc + iseq->arg_post_len;
 }
 
-/*
- * Returns the number of required parameters and stores the maximum
- * number of parameters in max, or UNLIMITED_ARGUMENTS if no max.
- * For non-lambda procs, the maximum is the number of non-ignored
- * parameters even though there is no actual limit to the number of parameters
- */
 static int
-rb_proc_min_max_arity(VALUE self, int *max)
+rb_block_min_max_arity(rb_block_t *block, int *max)
 {
-    rb_proc_t *proc;
-    rb_iseq_t *iseq;
-    GetProcPtr(self, proc);
-    iseq = proc->block.iseq;
+    rb_iseq_t *iseq = block->iseq;
     if (iseq) {
 	if (BUILTIN_TYPE(iseq) != T_NODE) {
 	    return rb_iseq_min_max_arity(iseq, max);
@@ -698,6 +690,22 @@ rb_proc_min_max_arity(VALUE self, int *max)
     return 0;
 }
 
+/*
+ * Returns the number of required parameters and stores the maximum
+ * number of parameters in max, or UNLIMITED_ARGUMENTS if no max.
+ * For non-lambda procs, the maximum is the number of non-ignored
+ * parameters even though there is no actual limit to the number of parameters
+ */
+static int
+rb_proc_min_max_arity(VALUE self, int *max)
+{
+    rb_proc_t *proc;
+    rb_block_t *block;
+    GetProcPtr(self, proc);
+    block = &proc->block;
+    return rb_block_min_max_arity(block, max);
+}
+
 int
 rb_proc_arity(VALUE self)
 {
@@ -705,6 +713,27 @@ rb_proc_arity(VALUE self)
     int max, min = rb_proc_min_max_arity(self, &max);
     GetProcPtr(self, proc);
     return (proc->is_lambda ? min == max : max != UNLIMITED_ARGUMENTS) ? min : -min-1;
+}
+
+int
+rb_block_arity(void)
+{
+    int min, max;
+    rb_thread_t *th = GET_THREAD();
+    rb_control_frame_t *cfp = th->cfp;
+    rb_block_t *block = rb_vm_control_frame_block_ptr(cfp);
+    VALUE proc_value;
+
+    if (!block) rb_raise(rb_eArgError, "no block given");
+    min = rb_block_min_max_arity(block, &max);
+    proc_value = block->proc;
+    if (proc_value) {
+	rb_proc_t *proc;
+	GetProcPtr(proc_value, proc);
+	if (proc)
+	    return (proc->is_lambda ? min == max : max != UNLIMITED_ARGUMENTS) ? min : -min-1;
+    }
+    return max != UNLIMITED_ARGUMENTS ? min : -min-1;
 }
 
 #define get_proc_iseq rb_proc_get_iseq
@@ -854,9 +883,8 @@ proc_to_s(VALUE self)
 	if (iseq->line_info_table) {
 	    first_lineno = rb_iseq_first_lineno(iseq);
 	}
-	str = rb_sprintf("#<%s:%p@%s:%d%s>", cname, (void *)self,
-			 RSTRING_PTR(iseq->location.path),
-			 first_lineno, is_lambda);
+	str = rb_sprintf("#<%s:%p@%"PRIsVALUE":%d%s>", cname, (void *)self,
+			 iseq->location.path, first_lineno, is_lambda);
     }
     else {
 	str = rb_sprintf("#<%s:%p%s>", cname, (void *)proc->block.iseq,

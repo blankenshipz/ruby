@@ -241,7 +241,7 @@ static void timer_thread_function(void *);
 
 #if THREAD_DEBUG
 static int debug_mutex_initialized = 1;
-static rb_thread_lock_t debug_mutex;
+static rb_nativethread_lock_t debug_mutex;
 
 void
 rb_thread_debug(
@@ -277,15 +277,27 @@ rb_vm_gvl_destroy(rb_vm_t *vm)
 }
 
 void
-rb_thread_lock_unlock(rb_thread_lock_t *lock)
+rb_nativethread_lock_initialize(rb_nativethread_lock_t *lock)
 {
-    native_mutex_unlock(lock);
+    native_mutex_initialize(lock);
 }
 
 void
-rb_thread_lock_destroy(rb_thread_lock_t *lock)
+rb_nativethread_lock_destroy(rb_nativethread_lock_t *lock)
 {
     native_mutex_destroy(lock);
+}
+
+void
+rb_nativethread_lock_lock(rb_nativethread_lock_t *lock)
+{
+    native_mutex_lock(lock);
+}
+
+void
+rb_nativethread_lock_unlock(rb_nativethread_lock_t *lock)
+{
+    native_mutex_unlock(lock);
 }
 
 static int
@@ -375,8 +387,8 @@ terminate_i(st_data_t key, st_data_t val, rb_thread_t *main_thread)
 
 typedef struct rb_mutex_struct
 {
-    rb_thread_lock_t lock;
-    rb_thread_cond_t cond;
+    rb_nativethread_lock_t lock;
+    rb_nativethread_cond_t cond;
     struct rb_thread_struct volatile *th;
     int cond_waiting;
     struct rb_mutex_struct *next_mutex;
@@ -4561,6 +4573,9 @@ rb_mutex_sleep(VALUE self, VALUE timeout)
  * Releases the lock and sleeps +timeout+ seconds if it is given and
  * non-nil or forever.  Raises +ThreadError+ if +mutex+ wasn't locked by
  * the current thread.
+ *
+ * When the thread is next woken up, it will attempt to reacquire
+ * the lock.
  *
  * Note that this method can wakeup without explicit Thread#wakeup call.
  * For example, receiving signal and so on.

@@ -1007,7 +1007,7 @@ static int
 delete_if_i(VALUE key, VALUE value, VALUE hash)
 {
     if (RTEST(rb_yield_values(2, key, value))) {
-	rb_hash_delete_key(hash, key);
+	return ST_DELETE;
     }
     return ST_CONTINUE;
 }
@@ -1061,9 +1061,8 @@ rb_hash_reject_bang(VALUE hash)
 
     RETURN_SIZED_ENUMERATOR(hash, 0, 0, hash_enum_size);
     rb_hash_modify(hash);
-    if (!RHASH(hash)->ntbl)
-        return Qnil;
-    n = RHASH(hash)->ntbl->num_entries;
+    n = RHASH_SIZE(hash);
+    if (!n) return Qnil;
     rb_hash_foreach(hash, delete_if_i, hash);
     if (n == RHASH(hash)->ntbl->num_entries) return Qnil;
     return hash;
@@ -1307,14 +1306,22 @@ replace_i(VALUE key, VALUE val, VALUE hash)
 static VALUE
 rb_hash_initialize_copy(VALUE hash, VALUE hash2)
 {
+    st_table *ntbl;
+
     rb_hash_modify_check(hash);
     hash2 = to_hash(hash2);
 
     Check_Type(hash2, T_HASH);
 
-    if (!RHASH_EMPTY_P(hash2)) {
+    ntbl = RHASH(hash)->ntbl;
+    if (RHASH(hash2)->ntbl) {
+	if (ntbl) st_free_table(ntbl);
         RHASH(hash)->ntbl = st_copy(RHASH(hash2)->ntbl);
-	rb_hash_rehash(hash);
+	if (RHASH(hash)->ntbl->num_entries)
+	    rb_hash_rehash(hash);
+    }
+    else if (ntbl) {
+	st_clear(ntbl);
     }
 
     if (FL_TEST(hash2, HASH_PROC_DEFAULT)) {
@@ -1343,21 +1350,35 @@ rb_hash_initialize_copy(VALUE hash, VALUE hash2)
 static VALUE
 rb_hash_replace(VALUE hash, VALUE hash2)
 {
+    st_table *table2;
+
     rb_hash_modify_check(hash);
-    hash2 = to_hash(hash2);
     if (hash == hash2) return hash;
-    rb_hash_clear(hash);
-    if (RHASH(hash2)->ntbl) {
-	hash_tbl(hash);
-	RHASH(hash)->ntbl->type = RHASH(hash2)->ntbl->type;
-    }
-    rb_hash_foreach(hash2, replace_i, hash);
+    hash2 = to_hash(hash2);
+
     RHASH_SET_IFNONE(hash, RHASH_IFNONE(hash2));
-    if (FL_TEST(hash2, HASH_PROC_DEFAULT)) {
+    if (FL_TEST(hash2, HASH_PROC_DEFAULT))
 	FL_SET(hash, HASH_PROC_DEFAULT);
+    else
+	FL_UNSET(hash, HASH_PROC_DEFAULT);
+
+    table2 = RHASH(hash2)->ntbl;
+
+    if (RHASH_EMPTY_P(hash2)) {
+	rb_hash_clear(hash);
+	if (table2) hash_tbl(hash)->type = table2->type;
+	return hash;
+    }
+
+    if (RHASH_ITER_LEV(hash) > 0) {
+	rb_hash_clear(hash);
+	hash_tbl(hash)->type = table2->type;
+	rb_hash_foreach(hash2, replace_i, hash);
     }
     else {
-	FL_UNSET(hash, HASH_PROC_DEFAULT);
+	st_table *old_table = RHASH(hash)->ntbl;
+	if (old_table) st_free_table(old_table);
+	RHASH(hash)->ntbl = st_copy(table2);
     }
 
     return hash;
@@ -1379,9 +1400,7 @@ rb_hash_replace(VALUE hash, VALUE hash2)
 static VALUE
 rb_hash_size(VALUE hash)
 {
-    if (!RHASH(hash)->ntbl)
-        return INT2FIX(0);
-    return INT2FIX(RHASH(hash)->ntbl->num_entries);
+    return INT2FIX(RHASH_SIZE(hash));
 }
 
 
@@ -1475,6 +1494,13 @@ each_pair_i(VALUE key, VALUE value)
     return ST_CONTINUE;
 }
 
+static int
+each_pair_i_fast(VALUE key, VALUE value)
+{
+    rb_yield_values(2, key, value);
+    return ST_CONTINUE;
+}
+
 /*
  *  call-seq:
  *     hsh.each      {| key, value | block } -> hsh
@@ -1501,7 +1527,10 @@ static VALUE
 rb_hash_each_pair(VALUE hash)
 {
     RETURN_SIZED_ENUMERATOR(hash, 0, 0, hash_enum_size);
-    rb_hash_foreach(hash, each_pair_i, 0);
+    if (rb_block_arity() > 1)
+	rb_hash_foreach(hash, each_pair_i_fast, 0);
+    else
+	rb_hash_foreach(hash, each_pair_i, 0);
     return hash;
 }
 
@@ -1651,7 +1680,7 @@ rb_hash_keys(VALUE hash)
 {
     VALUE ary;
 
-    ary = rb_ary_new();
+    ary = rb_ary_new_capa(RHASH_SIZE(hash));
     rb_hash_foreach(hash, keys_i, ary);
 
     return ary;
@@ -1681,7 +1710,7 @@ rb_hash_values(VALUE hash)
 {
     VALUE ary;
 
-    ary = rb_ary_new();
+    ary = rb_ary_new_capa(RHASH_SIZE(hash));
     rb_hash_foreach(hash, values_i, ary);
 
     return ary;
@@ -1871,12 +1900,9 @@ hash_i(VALUE key, VALUE val, VALUE arg)
 static VALUE
 recursive_hash(VALUE hash, VALUE dummy, int recur)
 {
-    st_index_t hval;
+    st_index_t hval = RHASH_SIZE(hash);
 
-    if (!RHASH(hash)->ntbl)
-        return LONG2FIX(0);
-    hval = RHASH(hash)->ntbl->num_entries;
-    if (!hval) return LONG2FIX(0);
+    if (!hval) return INT2FIX(0);
     if (recur)
 	hval = rb_hash_uint(rb_hash_start(rb_hash(rb_cHash)), hval);
     else
@@ -2097,6 +2123,32 @@ rb_hash_merge(VALUE hash1, VALUE hash2)
 }
 
 static int
+assoc_cmp(VALUE a, VALUE b)
+{
+    return !RTEST(rb_equal(a, b));
+}
+
+static VALUE
+lookup2_call(VALUE arg)
+{
+    VALUE *args = (VALUE *)arg;
+    return rb_hash_lookup2(args[0], args[1], Qundef);
+}
+
+struct reset_hash_type_arg {
+    VALUE hash;
+    const struct st_hash_type *orighash;
+};
+
+static VALUE
+reset_hash_type(VALUE arg)
+{
+    struct reset_hash_type_arg *p = (struct reset_hash_type_arg *)arg;
+    RHASH(p->hash)->ntbl->type = p->orighash;
+    return Qundef;
+}
+
+static int
 assoc_i(VALUE key, VALUE val, VALUE arg)
 {
     VALUE *args = (VALUE *)arg;
@@ -2123,11 +2175,33 @@ assoc_i(VALUE key, VALUE val, VALUE arg)
  */
 
 VALUE
-rb_hash_assoc(VALUE hash, VALUE obj)
+rb_hash_assoc(VALUE hash, VALUE key)
 {
+    st_table *table;
+    const struct st_hash_type *orighash;
     VALUE args[2];
 
-    args[0] = obj;
+    if (RHASH_EMPTY_P(hash)) return Qnil;
+    table = RHASH(hash)->ntbl;
+    orighash = table->type;
+
+    if (orighash != &identhash) {
+	VALUE value;
+	struct reset_hash_type_arg ensure_arg;
+	struct st_hash_type assochash;
+
+	assochash.compare = assoc_cmp;
+	assochash.hash = orighash->hash;
+	table->type = &assochash;
+	args[0] = hash;
+	args[1] = key;
+	ensure_arg.hash = hash;
+	ensure_arg.orighash = orighash;
+	value = rb_ensure(lookup2_call, (VALUE)&args, reset_hash_type, (VALUE)&ensure_arg);
+	if (value != Qundef) return rb_assoc_new(key, value);
+    }
+
+    args[0] = key;
     args[1] = Qnil;
     rb_hash_foreach(hash, assoc_i, (VALUE)args);
     return args[1];
@@ -2169,6 +2243,18 @@ rb_hash_rassoc(VALUE hash, VALUE obj)
     return args[1];
 }
 
+static int
+flatten_i(VALUE key, VALUE val, VALUE ary)
+{
+    VALUE pair[2];
+
+    pair[0] = key;
+    pair[1] = val;
+    rb_ary_cat(ary, pair, 2);
+
+    return ST_CONTINUE;
+}
+
 /*
  *  call-seq:
  *     hash.flatten -> an_array
@@ -2188,17 +2274,21 @@ rb_hash_rassoc(VALUE hash, VALUE obj)
 static VALUE
 rb_hash_flatten(int argc, VALUE *argv, VALUE hash)
 {
-    VALUE ary, tmp;
+    VALUE ary;
 
-    ary = rb_hash_to_a(hash);
-    if (argc == 0) {
-	argc = 1;
-	tmp = INT2FIX(1);
-	argv = &tmp;
+    ary = rb_ary_new_capa(RHASH_SIZE(hash) * 2);
+    rb_hash_foreach(hash, flatten_i, ary);
+    if (argc) {
+	int level = NUM2INT(*argv) - 1;
+	if (level > 0) {
+	    *argv = INT2FIX(level);
+	    rb_funcall2(ary, rb_intern("flatten!"), argc, argv);
+	}
     }
-    rb_funcall2(ary, rb_intern("flatten!"), argc, argv);
     return ary;
 }
+
+static VALUE rb_hash_compare_by_id_p(VALUE hash);
 
 /*
  *  call-seq:
@@ -2219,6 +2309,7 @@ rb_hash_flatten(int argc, VALUE *argv, VALUE hash)
 static VALUE
 rb_hash_compare_by_id(VALUE hash)
 {
+    if (rb_hash_compare_by_id_p(hash)) return hash;
     rb_hash_modify(hash);
     RHASH(hash)->ntbl->type = &identhash;
     rb_hash_rehash(hash);
@@ -2407,7 +2498,7 @@ env_fetch(int argc, VALUE *argv)
     if (!env) {
 	if (block_given) return rb_yield(key);
 	if (argc == 1) {
-	    rb_raise(rb_eKeyError, "key not found");
+	    rb_raise(rb_eKeyError, "key not found: \"%"PRIsVALUE"\"", key);
 	}
 	return if_none;
     }

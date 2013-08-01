@@ -560,15 +560,21 @@ AC_DEFUN([RUBY_DTRACE_AVAILABLE],
 AC_DEFUN([RUBY_DTRACE_POSTPROCESS],
 [AC_CACHE_CHECK(whether $DTRACE needs post processing, rb_cv_prog_dtrace_g,
 [
- echo "int main(void){ return 0; }" > conftest.c
- echo "provider conftest{};" > conftest_provider.d
- $CC $CFLAGS -c -o conftest.o conftest.c
- if $DTRACE -G -s conftest_provider.d conftest.o 2>/dev/null; then
-   rb_cv_prog_dtrace_g=yes
- else
-   rb_cv_prog_dtrace_g=no
- fi
- rm -f conftest.o conftest.c conftest_provider.d conftest_provider.o
+  if {
+    echo "provider conftest{ probe fire(); };" > conftest_provider.d &&
+    dtrace -h -o conftest_provider.h -s conftest_provider.d >/dev/null 2>/dev/null &&
+    cat >conftest.c <<_CONF &&
+    @%:@include "conftest_provider.h"
+    int main(void){ CONFTEST_FIRE(); return 0; }
+_CONF
+    $CC $CFLAGS -c -o conftest.o conftest.c &&
+    $DTRACE -G -s conftest_provider.d conftest.o 2>/dev/null
+  }; then
+    rb_cv_prog_dtrace_g=yes
+  else
+    rb_cv_prog_dtrace_g=no
+  fi
+  rm -f conftest.[co] conftest_provider.[dho]
 ])
 ])
 
@@ -1783,6 +1789,7 @@ AC_CHECK_FUNCS(log2)
 AC_CHECK_FUNCS(lstat)
 AC_CHECK_FUNCS(mblen)
 AC_CHECK_FUNCS(memalign)
+AC_CHECK_FUNCS(memrchr)
 AC_CHECK_FUNCS(mktime)
 AC_CHECK_FUNCS(pipe2)
 AC_CHECK_FUNCS(poll)
@@ -1832,7 +1839,22 @@ AC_CHECK_FUNCS(utimes)
 AC_CHECK_FUNCS(wait4)
 AC_CHECK_FUNCS(waitpid)
 
-# Some platform neet -lrt for clock_gettime, but the other don't.
+AC_DEFUN([RUBY_CHECK_BUILTIN_FUNC], [dnl
+AC_CACHE_CHECK([for $1], AS_TR_SH(rb_cv_builtin_$1),
+  [AC_LINK_IFELSE(
+    [AC_LANG_PROGRAM([], [$2;])],
+    [AS_TR_SH(rb_cv_builtin_$1)=yes],
+    [AS_TR_SH(rb_cv_builtin_$1)=no])])
+if test "${AS_TR_SH(rb_cv_builtin_$1)}" != no; then
+  AC_DEFINE(AS_TR_CPP(HAVE_BUILTIN_$1))
+fi])
+RUBY_CHECK_BUILTIN_FUNC(__builtin_bswap32, [__builtin_bswap32(0)])
+RUBY_CHECK_BUILTIN_FUNC(__builtin_bswap64, [__builtin_bswap64(0)])
+RUBY_CHECK_BUILTIN_FUNC(__builtin_clz, [__builtin_clz(0)])
+RUBY_CHECK_BUILTIN_FUNC(__builtin_clzl, [__builtin_clzl(0)])
+RUBY_CHECK_BUILTIN_FUNC(__builtin_clzll, [__builtin_clzll(0)])
+
+# Some platform need -lrt for clock_gettime, but the other don't.
 if test x"$ac_cv_func_clock_gettime" != xyes; then
     # glibc 2.17 moves clock_* functions from librt to the main C library.
     # http://sourceware.org/ml/libc-announce/2012/msg00001.html

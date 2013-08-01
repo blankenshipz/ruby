@@ -229,15 +229,12 @@ rb_str_encode_ospath(VALUE path)
 {
 #ifdef _WIN32
     rb_encoding *enc = rb_enc_get(path);
-    if (enc != rb_ascii8bit_encoding()) {
-	rb_encoding *utf8 = rb_utf8_encoding();
-	if (enc != utf8)
-	    path = rb_str_encode(path, rb_enc_from_encoding(utf8), 0, Qnil);
+    rb_encoding *utf8 = rb_utf8_encoding();
+    if (enc == rb_ascii8bit_encoding()) {
+	enc = rb_filesystem_encoding();
     }
-    else if (RSTRING_LEN(path) > 0) {
-	path = rb_str_dup(path);
-	rb_enc_associate(path, rb_filesystem_encoding());
-	path = rb_str_encode(path, rb_enc_from_encoding(rb_utf8_encoding()), 0, Qnil);
+    if (enc != utf8) {
+	path = rb_str_conv_enc(path, enc, utf8);
     }
 #endif
     return path;
@@ -2885,10 +2882,9 @@ ntfs_tail(const char *path, const char *end, rb_encoding *enc)
     buflen = RSTRING_LEN(result),\
     pend = p + buflen)
 
-VALUE
-rb_home_dir(const char *user, VALUE result)
+static VALUE
+copy_home_path(VALUE result, const char *dir)
 {
-    const char *dir;
     char *buf;
 #if defined DOSISH || defined __CYGWIN__
     char *p, *bend;
@@ -2896,29 +2892,9 @@ rb_home_dir(const char *user, VALUE result)
     long dirlen;
     rb_encoding *enc;
 
-    if (!user || !*user) {
-	if (!(dir = getenv("HOME"))) {
-	    rb_raise(rb_eArgError, "couldn't find HOME environment -- expanding `~'");
-	}
-	dirlen = strlen(dir);
-	rb_str_resize(result, dirlen);
-	memcpy(buf = RSTRING_PTR(result), dir, dirlen);
-    }
-    else {
-#ifdef HAVE_PWD_H
-	struct passwd *pwPtr = getpwnam(user);
-	if (!pwPtr) {
-	    endpwent();
-	    rb_raise(rb_eArgError, "user %s doesn't exist", user);
-	}
-	dirlen = strlen(pwPtr->pw_dir);
-	rb_str_resize(result, dirlen);
-	memcpy(buf = RSTRING_PTR(result), pwPtr->pw_dir, dirlen + 1);
-	endpwent();
-#else
-	return Qnil;
-#endif
-    }
+    dirlen = strlen(dir);
+    rb_str_resize(result, dirlen);
+    memcpy(buf = RSTRING_PTR(result), dir, dirlen);
     enc = rb_filesystem_encoding();
     rb_enc_associate(result, enc);
 #if defined DOSISH || defined __CYGWIN__
@@ -2929,6 +2905,33 @@ rb_home_dir(const char *user, VALUE result)
     }
 #endif
     return result;
+}
+
+VALUE
+rb_home_dir_of(VALUE user, VALUE result)
+{
+#ifdef HAVE_PWD_H
+    struct passwd *pwPtr = getpwnam(RSTRING_PTR(user));
+    if (!pwPtr) {
+	endpwent();
+#endif
+	rb_raise(rb_eArgError, "user %"PRIsVALUE" doesn't exist", user);
+#ifdef HAVE_PWD_H
+    }
+    copy_home_path(result, pwPtr->pw_dir);
+    endpwent();
+#endif
+    return result;
+}
+
+VALUE
+rb_default_home_dir(VALUE result)
+{
+    const char *dir = getenv("HOME");
+    if (!dir) {
+	rb_raise(rb_eArgError, "couldn't find HOME environment -- expanding `~'");
+    }
+    return copy_home_path(result, dir);
 }
 
 #ifndef _WIN32
@@ -2980,22 +2983,25 @@ rb_file_expand_path_internal(VALUE fname, VALUE dname, int abs_mode, int long_na
 	    b = 0;
 	    rb_str_set_len(result, 0);
 	    if (*++s) ++s;
+	    rb_default_home_dir(result);
 	}
 	else {
 	    s = nextdirsep(b = s, fend, enc);
+	    b++; /* b[0] is '~' */
 	    userlen = s - b;
 	    BUFCHECK(bdiff + userlen >= buflen);
 	    memcpy(p, b, userlen);
+	    ENC_CODERANGE_CLEAR(result);
 	    rb_str_set_len(result, userlen);
+	    rb_enc_associate(result, enc);
+	    rb_home_dir_of(result, result);
 	    buf = p + 1;
 	    p += userlen;
 	}
-	if (NIL_P(rb_home_dir(buf, result))) {
-	    rb_raise(rb_eArgError, "can't find user %s", buf);
-	}
 	if (!rb_is_absolute_path(RSTRING_PTR(result))) {
 	    if (userlen) {
-		rb_raise(rb_eArgError, "non-absolute home of %.*s", (int)userlen, b);
+		rb_enc_raise(enc, rb_eArgError, "non-absolute home of %.*s%.0"PRIsVALUE,
+			     (int)userlen, b, fname);
 	    }
 	    else {
 		rb_raise(rb_eArgError, "non-absolute home");

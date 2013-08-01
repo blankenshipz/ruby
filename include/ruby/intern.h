@@ -101,7 +101,7 @@ VALUE rb_str_to_inum(VALUE, int, int);
 VALUE rb_cstr2inum(const char*, int);
 VALUE rb_str2inum(VALUE, int);
 VALUE rb_big2str(VALUE, int);
-VALUE rb_big2str0(VALUE, int, int);
+DEPRECATED(VALUE rb_big2str0(VALUE, int, int));
 SIGNED_VALUE rb_big2long(VALUE);
 #define rb_big2int(x) rb_big2long(x)
 VALUE rb_big2ulong(VALUE);
@@ -134,6 +134,33 @@ VALUE rb_big_or(VALUE, VALUE);
 VALUE rb_big_xor(VALUE, VALUE);
 VALUE rb_big_lshift(VALUE, VALUE);
 VALUE rb_big_rshift(VALUE, VALUE);
+
+/* For rb_integer_pack and rb_integer_unpack: */
+/* "MS" in MSWORD and MSBYTE means "most significant" */
+/* "LS" in LSWORD and LSBYTE means "least significant" */
+#define INTEGER_PACK_MSWORD_FIRST       0x01
+#define INTEGER_PACK_LSWORD_FIRST       0x02
+#define INTEGER_PACK_MSBYTE_FIRST       0x10
+#define INTEGER_PACK_LSBYTE_FIRST       0x20
+#define INTEGER_PACK_NATIVE_BYTE_ORDER  0x40
+#define INTEGER_PACK_2COMP              0x80
+#define INTEGER_PACK_FORCE_GENERIC_IMPLEMENTATION     0x400
+/* For rb_integer_unpack: */
+#define INTEGER_PACK_FORCE_BIGNUM       0x100
+#define INTEGER_PACK_NEGATIVE           0x200
+/* Combinations: */
+#define INTEGER_PACK_LITTLE_ENDIAN \
+    (INTEGER_PACK_LSWORD_FIRST | \
+     INTEGER_PACK_LSBYTE_FIRST)
+#define INTEGER_PACK_BIG_ENDIAN \
+    (INTEGER_PACK_MSWORD_FIRST | \
+     INTEGER_PACK_MSBYTE_FIRST)
+int rb_integer_pack(VALUE val, void *words, size_t numwords, size_t wordsize, size_t nails, int flags);
+VALUE rb_integer_unpack(const void *words, size_t numwords, size_t wordsize, size_t nails, int flags);
+size_t rb_absint_size(VALUE val, int *nlz_bits_ret);
+size_t rb_absint_numwords(VALUE val, size_t word_numbits, size_t *nlz_bits_ret);
+int rb_absint_singlebit_p(VALUE val);
+
 /* rational.c */
 VALUE rb_rational_raw(VALUE, VALUE);
 #define rb_rational_raw1(x) rb_rational_raw((x), INT2FIX(1))
@@ -144,6 +171,8 @@ VALUE rb_rational_new(VALUE, VALUE);
 VALUE rb_Rational(VALUE, VALUE);
 #define rb_Rational1(x) rb_Rational((x), INT2FIX(1))
 #define rb_Rational2(x,y) rb_Rational((x), (y))
+VALUE rb_flt_rationalize_with_prec(VALUE, VALUE);
+VALUE rb_flt_rationalize(VALUE);
 /* complex.c */
 VALUE rb_complex_raw(VALUE, VALUE);
 #define rb_complex_raw1(x) rb_complex_raw((x), INT2FIX(0))
@@ -644,6 +673,7 @@ int rb_reg_options(VALUE);
 RUBY_EXTERN VALUE rb_argv0;
 VALUE rb_get_argv(void);
 void *rb_load_file(const char*);
+void *rb_load_file_str(VALUE);
 /* signal.c */
 VALUE rb_f_kill(int, VALUE*);
 #ifdef POSIX_SIGNAL
@@ -701,6 +731,7 @@ VALUE rb_str_times(VALUE, VALUE);
 long rb_str_sublen(VALUE, long);
 VALUE rb_str_substr(VALUE, long, long);
 VALUE rb_str_subseq(VALUE, long, long);
+char *rb_str_subpos(VALUE, long, long*);
 void rb_str_modify(VALUE);
 void rb_str_modify_expand(VALUE, long);
 VALUE rb_str_freeze(VALUE);

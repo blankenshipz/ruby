@@ -161,6 +161,12 @@ static ID id_write, id_read, id_getc, id_flush, id_readpartial, id_set_encoding;
 static VALUE sym_mode, sym_perm, sym_extenc, sym_intenc, sym_encoding, sym_open_args;
 static VALUE sym_textmode, sym_binmode, sym_autoclose;
 static VALUE sym_SET, sym_CUR, sym_END;
+#ifdef SEEK_DATA
+static VALUE sym_DATA;
+#endif
+#ifdef SEEK_HOLE
+static VALUE sym_HOLE;
+#endif
 
 struct argf {
     VALUE filename, current_file;
@@ -1551,6 +1557,14 @@ interpret_seek_whence(VALUE vwhence)
         return SEEK_CUR;
     if (vwhence == sym_END)
         return SEEK_END;
+#ifdef SEEK_DATA
+    if (vwhence == sym_DATA)
+        return SEEK_DATA;
+#endif
+#ifdef SEEK_HOLE
+    if (vwhence == sym_HOLE)
+        return SEEK_HOLE;
+#endif
     return NUM2INT(vwhence);
 }
 
@@ -2047,15 +2061,32 @@ io_bufread(char *ptr, long len, rb_io_t *fptr)
 
 static void io_setstrbuf(VALUE *str, long len);
 
+struct bufread_arg {
+    char *str_ptr;
+    long len;
+    rb_io_t *fptr;
+};
+
+static VALUE
+bufread_call(VALUE arg)
+{
+    struct bufread_arg *p = (struct bufread_arg *)arg;
+    p->len = io_bufread(p->str_ptr, p->len, p->fptr);
+    return Qundef;
+}
+
 static long
 io_fread(VALUE str, long offset, long size, rb_io_t *fptr)
 {
     long len;
+    struct bufread_arg arg;
 
     io_setstrbuf(&str, offset + size);
-    rb_str_locktmp(str);
-    len = io_bufread(RSTRING_PTR(str) + offset, size, fptr);
-    rb_str_unlocktmp(str);
+    arg.str_ptr = RSTRING_PTR(str) + offset;
+    arg.len = size;
+    arg.fptr = fptr;
+    rb_str_locktmp_ensure(str, bufread_call, (VALUE)&arg);
+    len = arg.len;
     if (len < 0) rb_sys_fail_path(fptr->pathv);
     return len;
 }
@@ -2366,12 +2397,27 @@ rb_io_set_nonblock(rb_io_t *fptr)
 void
 rb_readwrite_sys_fail(int writable, const char *mesg);
 
+struct read_internal_arg {
+    int fd;
+    char *str_ptr;
+    long len;
+};
+
+static VALUE
+read_internal_call(VALUE arg)
+{
+    struct read_internal_arg *p = (struct read_internal_arg *)arg;
+    p->len = rb_read_internal(p->fd, p->str_ptr, p->len);
+    return Qundef;
+}
+
 static VALUE
 io_getpartial(int argc, VALUE *argv, VALUE io, int nonblock)
 {
     rb_io_t *fptr;
     VALUE length, str;
     long n, len;
+    struct read_internal_arg arg;
 
     rb_scan_args(argc, argv, "11", &length, &str);
 
@@ -2397,9 +2443,11 @@ io_getpartial(int argc, VALUE *argv, VALUE io, int nonblock)
             rb_io_set_nonblock(fptr);
         }
 	io_setstrbuf(&str, len);
-	rb_str_locktmp(str);
-	n = rb_read_internal(fptr->fd, RSTRING_PTR(str), len);
-	rb_str_unlocktmp(str);
+	arg.fd = fptr->fd;
+	arg.str_ptr = RSTRING_PTR(str);
+	arg.len = len;
+	rb_str_locktmp_ensure(str, read_internal_call, (VALUE)&arg);
+	n = arg.len;
         if (n < 0) {
             if (!nonblock && rb_io_wait_readable(fptr->fd))
                 goto again;
@@ -2759,10 +2807,9 @@ appendline(rb_io_t *fptr, int delim, VALUE *strp, long *lp)
         make_readconv(fptr, 0);
         do {
             const char *p, *e;
-            int searchlen;
-            if (fptr->cbuf.len) {
-                p = fptr->cbuf.ptr+fptr->cbuf.off;
-                searchlen = fptr->cbuf.len;
+            int searchlen = READ_CHAR_PENDING_COUNT(fptr);
+            if (searchlen) {
+                p = READ_CHAR_PENDING_PTR(fptr);
                 if (0 < limit && limit < searchlen)
                     searchlen = (int)limit;
                 e = memchr(p, delim, searchlen);
@@ -3037,7 +3084,7 @@ rb_io_getline_1(VALUE rs, long limit, VALUE io)
 	    if (c == newline) {
 		if (RSTRING_LEN(str) < rslen) continue;
 		s = RSTRING_PTR(str);
-                e = s + RSTRING_LEN(str);
+                e = RSTRING_END(str);
 		p = e - rslen;
 		pp = rb_enc_left_char_head(s, p, e, enc);
 		if (pp != p) continue;
@@ -3046,7 +3093,7 @@ rb_io_getline_1(VALUE rs, long limit, VALUE io)
 	    }
 	    if (limit == 0) {
 		s = RSTRING_PTR(str);
-		p = s + RSTRING_LEN(str);
+		p = RSTRING_END(str);
 		pp = rb_enc_left_char_head(s, p-1, p, enc);
                 if (extra_limit &&
                     MBCLEN_NEEDMORE_P(rb_enc_precise_mbclen(pp, p, enc))) {
@@ -3062,25 +3109,20 @@ rb_io_getline_1(VALUE rs, long limit, VALUE io)
 	    }
 	}
 
-	if (rspara) {
-	    if (c != EOF) {
-		swallow(fptr, '\n');
-	    }
-	}
+	if (rspara && c != EOF)
+	    swallow(fptr, '\n');
 	if (!NIL_P(str))
             str = io_enc_str(str, fptr);
     }
 
-    if (!NIL_P(str)) {
-	if (!nolimit) {
-	    fptr->lineno++;
-	    if (io == ARGF.current_file) {
-		ARGF.lineno++;
-		ARGF.last_lineno = ARGF.lineno;
-	    }
-	    else {
-		ARGF.last_lineno = fptr->lineno;
-	    }
+    if (!NIL_P(str) && !nolimit) {
+	fptr->lineno++;
+	if (io == ARGF.current_file) {
+	    ARGF.lineno++;
+	    ARGF.last_lineno = ARGF.lineno;
+	}
+	else {
+	    ARGF.last_lineno = fptr->lineno;
 	}
     }
 
@@ -4517,6 +4559,7 @@ rb_io_sysread(int argc, VALUE *argv, VALUE io)
     VALUE len, str;
     rb_io_t *fptr;
     long n, ilen;
+    struct read_internal_arg arg;
 
     rb_scan_args(argc, argv, "11", &len, &str);
     ilen = NUM2LONG(len);
@@ -4546,8 +4589,11 @@ rb_io_sysread(int argc, VALUE *argv, VALUE io)
 
     io_setstrbuf(&str, ilen);
     rb_str_locktmp(str);
-    n = rb_read_internal(fptr->fd, RSTRING_PTR(str), ilen);
-    rb_str_unlocktmp(str);
+    arg.fd = fptr->fd;
+    arg.str_ptr = RSTRING_PTR(str);
+    arg.len = ilen;
+    rb_ensure(read_internal_call, (VALUE)&arg, rb_str_unlocktmp, str);
+    n = arg.len;
 
     if (n == -1) {
 	rb_sys_fail_path(fptr->pathv);
@@ -11826,6 +11872,14 @@ Init_IO(void)
     rb_define_const(rb_cIO, "SEEK_CUR", INT2FIX(SEEK_CUR));
     /* Set I/O position from the end */
     rb_define_const(rb_cIO, "SEEK_END", INT2FIX(SEEK_END));
+#ifdef SEEK_DATA
+    /* Set I/O position to the next location containing data */
+    rb_define_const(rb_cIO, "SEEK_DATA", INT2FIX(SEEK_DATA));
+#endif
+#ifdef SEEK_HOLE
+    /* Set I/O position to the next hole */
+    rb_define_const(rb_cIO, "SEEK_HOLE", INT2FIX(SEEK_HOLE));
+#endif
     rb_define_method(rb_cIO, "rewind", rb_io_rewind, 0);
     rb_define_method(rb_cIO, "pos", rb_io_tell, 0);
     rb_define_method(rb_cIO, "pos=", rb_io_set_pos, 1);
@@ -11995,4 +12049,10 @@ Init_IO(void)
     sym_SET = ID2SYM(rb_intern("SET"));
     sym_CUR = ID2SYM(rb_intern("CUR"));
     sym_END = ID2SYM(rb_intern("END"));
+#ifdef SEEK_DATA
+    sym_DATA = ID2SYM(rb_intern("DATA"));
+#endif
+#ifdef SEEK_HOLE
+    sym_HOLE = ID2SYM(rb_intern("HOLE"));
+#endif
 }

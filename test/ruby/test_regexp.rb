@@ -64,6 +64,14 @@ class TestRegexp < Test::Unit::TestCase
 
   def test_to_s
     assert_equal '(?-mix:\x00)', Regexp.new("\0").to_s
+
+    str = "abcd\u3042"
+    [:UTF_16BE, :UTF_16LE, :UTF_32BE, :UTF_32LE].each do |es|
+      enc = Encoding.const_get(es)
+      rs = Regexp.new(str.encode(enc)).to_s
+      assert_equal("(?-mix:abcd\u3042)".encode(enc), rs)
+      assert_equal(enc, rs.encoding)
+    end
   end
 
   def test_union
@@ -934,5 +942,57 @@ class TestRegexp < Test::Unit::TestCase
     assert_equal false, /x/=== 42
     err = assert_raise(TypeError){ Regexp.quote(42) }
     assert_equal 'no implicit conversion of Fixnum into String', err.message, bug7539
+  end
+
+  def test_conditional_expression
+    bug8583 = '[ruby-dev:47480] [Bug #8583]'
+
+    conds = {"xy"=>true, "yx"=>true, "xx"=>false, "yy"=>false}
+    assert_match_each(/\A((x)|(y))(?(2)y|x)\z/, conds, bug8583)
+    assert_match_each(/\A((?<x>x)|(?<y>y))(?(<x>)y|x)\z/, conds, bug8583)
+  end
+
+  def test_options_in_look_behind
+    assert_nothing_raised {
+      assert_match_at("(?<=(?i)ab)cd", "ABcd", [[2,4]])
+      assert_match_at("(?<=(?i:ab))cd", "ABcd", [[2,4]])
+      assert_match_at("(?<!(?i)ab)cd", "aacd", [[2,4]])
+      assert_match_at("(?<!(?i:ab))cd", "aacd", [[2,4]])
+
+      assert_not_match("(?<=(?i)ab)cd", "ABCD")
+      assert_not_match("(?<=(?i:ab))cd", "ABCD")
+      assert_not_match("(?<!(?i)ab)cd", "ABcd")
+      assert_not_match("(?<!(?i:ab))cd", "ABcd")
+    }
+  end
+
+  # This assertion is for porting x2() tests in testpy.py of Onigmo.
+  def assert_match_at(re, str, positions, msg = nil)
+    re = Regexp.new(re) unless re.is_a?(Regexp)
+
+    match = re.match(str)
+
+    assert_not_nil match, message(msg) {
+      "Expected #{re.inspect} to match #{str.inspect}"
+    }
+
+    if match
+      actual_positions = (0...match.size).map { |i|
+        [match.begin(i), match.end(i)]
+      }
+
+      assert_equal positions, actual_positions, message(msg) {
+        "Expected #{re.inspect} to match #{str.inspect} at: #{positions.inspect}"
+      }
+    end
+  end
+
+  def assert_match_each(re, conds, msg = nil)
+    errs = conds.select {|str, match| match ^ (re =~ str)}
+    msg = message(msg) {
+      "Expected #{re.inspect} to\n" +
+      errs.map {|str, match| "\t#{'not ' unless match}match #{str.inspect}"}.join(",\n")
+    }
+    assert(errs.empty?, msg)
   end
 end

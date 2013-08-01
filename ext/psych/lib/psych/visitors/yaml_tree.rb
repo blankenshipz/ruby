@@ -5,7 +5,7 @@ require 'psych/class_loader'
 module Psych
   module Visitors
     ###
-    # YAMLTree builds a YAML ast given a ruby object.  For example:
+    # YAMLTree builds a YAML ast given a Ruby object.  For example:
     #
     #   builder = Psych::Visitors::YAMLTree.new
     #   builder << { :foo => 'bar' }
@@ -216,7 +216,7 @@ module Psych
 
       def visit_Time o
         formatted = format_time o
-        @emitter.scalar formatted, nil, nil, true, false, Nodes::Scalar::ANY
+        register o, @emitter.scalar(formatted, nil, nil, true, false, Nodes::Scalar::ANY)
       end
 
       def visit_Rational o

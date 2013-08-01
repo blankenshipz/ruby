@@ -1,6 +1,2249 @@
+Thu Aug  2 02:32:00 2013  Kenta Murata  <mrkn@mrkn.jp>
+
+	* NEWS: Add the description of number literal suffixes.
+
+Thu Aug  2 00:02:00 2013  Kenta Murata  <mrkn@mrkn.jp>
+
+	* bootstraptest/test_literal_suffix.rb: add two test cases to
+	  examine that "1if true" and "1rescue nil" are recognized as 1.
+
+Thu Aug  1 23:45:00 2013  Kenta Murata  <mrkn@mrkn.jp>
+
+	* rational.c (rb_flt_rationalize_with_prec): new public C function
+	  to rationalize a Float instance with a precision.
+
+	* rational.c (rb_flt_rationalize): new public C function to
+	 rationalize a Float instance.  A precision is calculated from
+	 the given float number.
+
+	* include/ruby/intern.h: Add rb_flt_rationalize_with_prec and
+	  rb_flt_rationalize.
+
+	* parse.y: implement number literal suffixes, 'r' and 'i'.
+	  [ruby-core:55096] [Feature #8430]
+
+	* bootstraptest/test_literal_suffix.rb: add tests for parser to scan
+	  number literals with the above tsuffixes.
+
+Thu Aug  1 23:55:08 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (rb_big2str1): Remove a local variable.
+
+Thu Aug  1 23:33:01 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (rb_cstr_to_inum): Use power_cache_get_power.
+
+Thu Aug  1 21:02:48 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (rb_big2str1): Raise an error for too big number.
+
+Thu Aug  1 20:46:29 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (power_cache_get_power): Hide cached Bignum objects.
+
+Thu Aug  1 19:15:05 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (rb_big2str1): Remove non-trim mode.
+	  (rb_big2str0): Non-trim mode implemented here.
+	  (big2str_find_n1): Change the result type to long again.
+	  (big2str_base_powerof2): Don't take arguments: len and trim.
+	  (rb_big2str): Follow above change.
+
+Thu Aug  1 12:37:58 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (big2str_alloc): New function to allocate the result string.
+	  It is called after actual length is calculated.
+	  (big2str_struct): Add fields: negative, result and ptr.
+	  (big2str_orig): Write out the result via b2s->ptr.
+	  (big2str_orig): Ditto.
+	  (rb_big2str1): Don't allocate the result string at beginning.
+
+Thu Aug  1 07:36:27 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (big2str_orig): Use temporary buffer when trim mode.
+
+Thu Aug  1 06:28:48 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (big2str_orig): Simplified because RBIGNUM_LEN(x) <= 2 now.
+	  (big2str_struct): Two fields added: hbase2, hbase2_numdigits.
+	  (rb_big2str1): Initialize above fields.
+
+Thu Aug  1 04:06:17 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* lib/rdoc/options.rb (RDoc#finish): include root path in include
+	  paths, to work in another directory than the source directory.
+	  [ruby-core:56282] [Bug #8712]
+
+	* test/test_rdoc_markup_pre_process.rb (TestRDocMarkupPreProcess#setup):
+	  fix input_file_name, as the test script is not pre-processed.
+
+Thu Aug  1 01:45:18 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (big2str_karatsuba): Fix a condition of power_level.
+
+Thu Aug  1 01:09:02 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (LOG2_KARATSUBA_BIG2STR_DIGITS): Removed.
+	  (KARATSUBA_BIG2STR_DIGITS): Removed.
+	  (big2str_numdigits_cache): New variable.
+	  (power_cache_get_power): Merged with power_cache_get_power0.
+	  This function returns maxpow_in_bdigit_dbl(base)**(2**power_level).
+	  (rb_big2str1): use power_cache_get_power.
+
+Wed Jul 31 23:59:28 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (big2str_find_n1): Change the return type to size_t.
+	  (big2str_orig): Ditto.
+	  (big2str_karatsuba): Ditto.
+	  (rb_big2str1): Follow the above changes.
+
+Wed Jul 31 23:19:06 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (power_cache_get_power): Change numdigits_ret to size_t *.
+	  (big2str_orig): Change len argument to size_t.
+	  (big2str_karatsuba): Ditto.
+	  (rb_big2str1): Follow the above changes.
+
+Wed Jul 31 22:59:47 2013  Kouhei Sutou  <kou@cozmixng.org>
+
+	* test/rexml/parse/test_notation_declaration.rb: Change class
+	  name to follow file name change.
+
+Wed Jul 31 22:57:50 2013  Kouhei Sutou  <kou@cozmixng.org>
+
+	* test/rexml/test_notationdecl_parsetest.rb: Rename to ...
+	* test/rexml/parse/test_notation_declaration.rb: ... this.
+
+Wed Jul 31 22:54:39 2013  Kouhei Sutou  <kou@cozmixng.org>
+
+	* test/rexml/test_notationdecl_mixin.rb: Remove duplicated tests.
+
+Wed Jul 31 22:52:55 2013  Kouhei Sutou  <kou@cozmixng.org>
+
+	* test/rexml/test_notationdecl_parsetest.rb: Fix typos in expected
+	  value.
+	  pubilc ->
+	  public
+	     ^^
+
+Wed Jul 31 22:50:51 2013  Kouhei Sutou  <kou@cozmixng.org>
+
+	* test/rexml/test_notationdecl_parsetest.rb: Add tests that focus
+	  system literal in external ID system notation declaration.
+
+Wed Jul 31 22:36:21 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bary_cmp): Extracted from rb_big_cmp.
+	  (power_cache_get_power): Change n1 argument (number of digits) to
+	  power_level which is just passed to power_cache_get_power0.
+	  (big2str_karatsuba): Ditto.
+	  (rb_big2str1): Calculate the initial power_level.
+
+Wed Jul 31 22:04:36 2013  Kouhei Sutou  <kou@cozmixng.org>
+
+	* test/rexml/test_notationdecl_parsetest.rb: Fix a typo.
+	  Extern  ID ->
+	  ExternalID
+	        ^^
+
+Wed Jul 31 22:01:36 2013  Kouhei Sutou  <kou@cozmixng.org>
+
+	* test/rexml/test_notationdecl_parsetest.rb: Add tests that focus
+	  public ID in external ID notation declaration.
+
+Wed Jul 31 22:01:24 2013  Kazuhiro NISHIYAMA  <zn@mbf.nifty.com>
+
+	* parse.y: fix build error with bison-3.0.
+
+Wed Jul 31 21:58:53 2013  Kouhei Sutou  <kou@cozmixng.org>
+
+	* test/rexml/test_notationdecl_parsetest.rb: Split test patterns.
+
+Wed Jul 31 21:42:33 2013  Kouhei Sutou  <kou@cozmixng.org>
+
+	* test/rexml/test_notationdecl_parsetest.rb: Group tests.
+
+Wed Jul 31 21:37:51 2013  Kouhei Sutou  <kou@cozmixng.org>
+
+	* test/rexml/test_notationdecl_mixin.rb (TestNotationDecl#test_name):
+	  Move to ...
+	* test/rexml/test_notationdecl_parsetest.rb
+	  (TestNotationDecl#test_name): ... here.
+
+Wed Jul 31 21:37:47 2013  Kouhei Sutou  <kou@cozmixng.org>
+
+Wed Jul 31 21:31:49 2013  Kouhei Sutou  <kou@cozmixng.org>
+
+	* test/rexml/test_notationdecl_parsetest.rb: Remove setup because it
+	  doesn't share anything with other tests.
+
+Wed Jul 31 21:24:55 2013  Kouhei Sutou  <kou@cozmixng.org>
+
+	* test/rexml/test_attributes_mixin.rb: Remove a needless shebang.
+	* test/rexml/test_notationdecl_mixin.rb: ditto.
+	* test/rexml/test_doctype.rb: ditto.
+	* test/rexml/test_xml_declaration.rb: ditto.
+	* test/rexml/test_changing_encoding.rb: ditto.
+
+Wed Jul 31 21:20:08 2013  Kouhei Sutou  <kou@cozmixng.org>
+
+	* test/rexml/test_notationdecl_parsetest.rb: remove a needless shebang.
+
+Wed Jul 31 20:11:01 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* string.c (rb_str_rindex): fix bug introduced in r42269.
+	  "".rindex("") should return 0.
+	  (str_rindex): ditto.
+
+Wed Jul 31 19:55:33 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (MAX_BIG2STR_TABLE_ENTRIES): Use SIZEOF_SIZE_T.
+	  (power_cache_get_power0): Add rb_bug call for too bit i argument.
+	  (power_cache_get_power): Simplified.
+
+Wed Jul 31 18:32:25 2013  Akinori MUSHA  <knu@iDaemons.org>
+
+	* lib/uri/common.rb (URI.decode_www_form_component): Use String#b.
+
+Wed Jul 31 18:24:02 2013  Shugo Maeda  <shugo@ruby-lang.org>
+
+	* eval.c (rb_mod_refine, mod_using, top_using): don't show
+	  warnings because Refinements are no longer experimental.
+	  [ruby-core:55993] [Feature #8632]
+
+	* test/ruby/test_refinement.rb: related test.
+
+	* NEWS: fixes for the above change.
+
+Wed Jul 31 17:55:55 2013  Shota Fukumori  <her@sorah.jp>
+
+	* lib/uri/common.rb (URI.decode_www_form_component):
+	  Don't raise error when str includes multibyte characters.
+
+Wed Jul 31 17:45:39 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* string.c (rb_str_rindex): performance improvement by using
+	  memrchr(3).
+
+Wed Jul 31 16:43:30 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* string.c (rb_str_rindex): refactoring and avoid to call str_nth() if
+	  pos == 0.
+
+Wed Jul 31 14:41:36 2013  Akinori MUSHA  <knu@iDaemons.org>
+
+	* lib/set.rb: [DOC] Add a couple of notes on Hash as storage.
+	  ref. [Feature #6589]
+
+Wed Jul 31 14:38:52 2013  Akinori MUSHA  <knu@iDaemons.org>
+
+	* lib/set.rb: [DOC] Fix example result.  Hash is now ordered.
+
+Wed Jul 31 14:38:10 2013  Akinori MUSHA  <knu@iDaemons.org>
+
+	* lib/set.rb: [DOC] Use the term "sorted" instead of "ordered"
+	  when mentioning SortSet.
+
+Wed Jul 31 12:18:47 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (big2str_struct): New structure.
+	  (big2str_orig): Use big2str_struct.
+	  (big2str_karatsuba): Ditto.
+	  (rb_big2str1): Ditto.
+
+Wed Jul 31 12:02:16 2013  Zachary Scott  <e@zzak.io>
+
+	* lib/rubygems.rb: [DOC] typo in url patch by @Red54 [Fixes #369]
+	  https://github.com/ruby/ruby/pull/369
+
+Wed Jul 31 07:09:07 2013  Eric Hodel  <drbrain@segment7.net>
+
+	* lib/rubygems:  Import RubyGems from master as of commit 523551c
+	* test/rubygems:  ditto.
+
+Tue Jul 30 22:21:54 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* test/ruby/test_hash.rb: add a test for enumeration order of Hash.
+
+Tue Jul 30 18:52:27 2013  Akinori MUSHA  <knu@iDaemons.org>
+
+	* lib/set.rb (Set#intersect?, Set#disjoint?): Add new methods for
+	  testing if two sets have any element in common.
+	  [ruby-core:45641] [Feature #6588] Based on the code by marcandre.
+
+Tue Jul 30 17:16:15 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* sprintf.c (ruby__sfvextra): add QUOTE flag to escape unprintable
+	  characters.
+
+Tue Jul 30 11:00:52 2013  Zachary Scott  <e@zzak.io>
+
+	* ext/curses/extconf.rb: [DOC] nodoc to reduce Object pollution
+
+Tue Jul 30 08:19:42 2013  Tanaka Akira  <akr@fsij.org>
+
+	* sizes.c (Init_sizes): Define sizes only if the type actually exists.
+
+Mon Jul 29 22:55:26 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* sizes.c (Init_sizes): define RbConfig::SIZEOF.  [Feature #8568]
+
+Mon Jul 29 22:25:20 2013  Zachary Scott  <e@zzak.io>
+
+	* ext/curses/curses.c: [DOC] Update location of samples
+	* samples/curses/*: Move Curses samples and refactor from mixin
+	  The samples are included in rdoc for module and use of mixin is
+	  confusing
+
+Mon Jul 29 22:16:11 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (LOG2_KARATSUBA_BIG2STR_DIGITS): Renamed from
+	  LOG2_KARATSUBA_DIGITS.
+	  (KARATSUBA_BIG2STR_DIGITS): Renamed from KARATSUBA_DIGITS.
+
+Mon Jul 29 22:04:45 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* hash.c (rb_hash_compare_by_id): add function prototype.
+
+Mon Jul 29 21:53:41 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* hash.c (rb_hash_compare_by_id): don't call rb_hash_rehash()
+	  if self.compare_by_identity? == true.
+
+Mon Jul 29 21:29:48 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* hash.c (rb_hash_assoc): performance improvement by replacing
+	  compare function in RHASH(hash)->ntbl->type temporarily like r42224.
+	  it falls back to rb_hash_foreach() if st_lookup() doesn't find the key.
+
+	* test/ruby/test_hash.rb: add a test for above.
+
+Mon Jul 29 21:15:30 2013  Akinori MUSHA  <knu@iDaemons.org>
+
+	* test/ruby/test_lazy_enumerator.rb
+	  (TestLazyEnumerator#test_initialize): Make sure
+	  Enumerator::Lazy#initialize raises error if the object is
+	  frozen.  The check was performed by rb_ivar_set() before
+	  rb_check_frozen() was added to enumerator_init().
+
+Mon Jul 29 21:06:42 2013  Akinori MUSHA  <knu@iDaemons.org>
+
+	* enumerator.c (enumerator_init): Add a frozenness check to
+	  prevent a frozen Enumerator object from being reinitialized with
+	  a different enumerable object.  This is the least we should do,
+	  and more fixes will follow. [Fixes GH-368] Patch by Kenichi
+	  Kamiya.
+
+	* enumerator.c (generator_init): Ditto.
+
+Mon Jul 29 20:14:24 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* hash.c (rb_hash_assoc): revert r42224. table->type->compare is
+	  called only if hashes are matched.
+
+	* test/ruby/test_hash.rb: add a test to check using #== to compare.
+
+Mon Jul 29 17:00:31 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* parse.y (yycompile): store file name as String to keep the encoding.
+
+	* parse.y (rb_parser_compile_string_path, rb_parser_compile_file_path):
+	  new functions to pass file name as a String.
+
+	* parse.y (gettable_gen): return a copy of the original file name, not
+	  a copy in filesystem encoding.
+
+	* vm_eval.c (eval_string_with_cref): use Qundef instead of "(eval)".
+
+Mon Jul 29 16:53:18 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* hash.c (rb_hash_initialize_copy): copy st_table type even if empty.
+	  [ruby-core:56256] [Bug #8703]
+
+Mon Jul 29 16:34:29 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* hash.c (rb_hash_initialize_copy): clear old table before copy new
+	  table.
+
+Mon Jul 29 16:34:09 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* hash.c (rb_hash_assoc): aggregate object can be initialized only
+	  with link time constants.
+
+Mon Jul 29 14:54:44 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* hash.c (rb_hash_assoc): performance improvement by replacing
+	  compare function in RHASH(hash)->ntbl->type temporarily.
+
+Mon Jul 29 14:52:46 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* lib/mkmf.rb (xsystem): expand environment variable in all macros not
+	  expanded with RbConfig.  [Bug #8702]
+
+	* test/mkmf/test_framework.rb (create_framework): replace all $@ not
+	  only once.
+
+Mon Jul 29 06:54:30 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* win32/win32.c (rb_w32_pipe): use enum for compile time constants,
+	  instead of const int for debugging.
+
+Mon Jul 29 00:11:49 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bigdivrem): Specialized implementation added for
+	  nx == 2 && ny == 2
+
+Sun Jul 28 20:28:41 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* io.c (io_getpartial): use rb_str_locktmp_ensure().
+	  [ruby-core:56121] [Bug #8669]
+
+	* io.c (rb_io_sysread): ditto.
+
+	* test/ruby/test_io.rb: add tests for above.
+
+Sun Jul 28 20:10:49 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* ext/extmk.rb (extmake): should make static libraries for extensions
+	  to be statically linked.  [Bug #7948]
+
+Sun Jul 28 17:38:32 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* string.c: add internal API rb_str_locktmp_ensure().
+
+	* io.c (io_fread): use rb_str_locktmp_ensure().
+	  [ruby-core:56121] [Bug #8669]
+
+	* test/ruby/test_io.rb: add a test for above.
+
+Sun Jul 28 13:04:39 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* io.c (interpret_seek_whence): support SEEK_DATA and SEEK_HOLE.
+	  These are whences for lseek(2) supported by Linux since version 3.1.
+	  [ruby-core:56123] [Feature #8671]
+
+	* test/ruby/test_io.rb: Add tests for above.
+
+Sun Jul 28 12:41:39 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (absint_numwords_generic): The char_bit variable changed
+	  to static constant.
+
+Sun Jul 28 12:03:23 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c: Constify bary_* functions.
+
+Sun Jul 28 11:12:07 2013  Tanaka Akira  <akr@fsij.org>
+
+	* include/ruby/intern.h (rb_absint_size): Declaration moved from
+	  internal.h to calculate required buffer size to pack integers.
+	  (rb_absint_numwords): Ditto.
+	  (rb_absint_singlebit_p): Ditto.
+	  [ruby-core:42813] [Feature #6065]
+
+Sun Jul 28 10:54:26 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* win32/win32.c (rb_w32_pipe): fix pipe name formatting.  as "%x" may
+	  not contain '0' at all, fill at fixed position instead.
+
+Sun Jul 28 00:35:14 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (rb_big_size): Return the bignum "bytewise" size.
+	  [ruby-core:55578] [Feature #8553]
+	  This is accepted by matz on DevelopersMeeting20130727Japan.
+
+Sun Jul 28 00:07:48 2013  Tanaka Akira  <akr@fsij.org>
+
+	* include/ruby/intern.h (rb_integer_pack): Declaration moved from
+	  internal.h.
+	  (rb_integer_unpack): Ditto.
+	  [ruby-core:42813] [Feature #6065]
+
+Fri Jul 26 23:18:13 2013  Kouhei Sutou  <kou@cozmixng.org>
+
+	* NEWS: Add a new feature that REXML::Parsers::StreamParser
+	  supports "entity" event.
+
+Fri Jul 26 23:14:31 2013  Kouhei Sutou  <kou@cozmixng.org>
+
+	* lib/rexml/parsers/streamparser.rb
+	  (REXML::Parsers::StreamParser#parse): Add "entity" event support to
+	  listener. [Bug #8689] [ruby-dev:47542]
+	  Reported by Ippei Obayashi.
+	* test/rexml/test_stream.rb (StreamTester#entity): Add a test for
+	  the above case.
+
+Fri Jul 26 23:05:27 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* parse.y (parser_yylex): separate numeric literal from succeeding
+	  token, and treat 'e' as floating point number only if followed by
+	  exponent part.
+
+Fri Jul 26 22:14:10 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* vm_exec.h (CHECK_VM_STACK_OVERFLOW_FOR_INSN): surround with
+	  do/while (0), and remove unnecessary casts.
+
+Fri Jul 26 20:12:07 2013  Akinori MUSHA  <knu@iDaemons.org>
+
+	* ext/syslog/lib/syslog/logger.rb (Syslog::Logger): Add facility
+	  to Syslog::Logger. [Fixes GH-305] patch by Max Shytikov
+	  https://github.com/ruby/ruby/pull/305
+
+Fri Jul 26 19:25:17 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* vm_exec.h, tool/instruction.rb: not an error, but a BUG if stack
+	  overflow checking failed just before/after the beginning of an
+	  instruction. It should be treated as a BUG.
+	  Please tell us if your code cause BUG with this problem.
+	  This check will removed soon (for performance).
+
+Fri Jul 26 18:30:14 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* array.c (ary_memcpy): cast to int to suppress a warning.
+
+Fri Jul 26 18:21:58 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* array.c (ary_memcpy): try to enable optimization.
+	  At least on my environments, I don't see any errors
+	  with many trials. Please tell us if you find any GC bugs.
+
+Fri Jul 26 17:49:26 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* win32/file.c (fix_string_encoding): fix target encoding.  the
+	  parameter `encoding' is not the target encoding but the original
+	  encoding.
+
+Fri Jul 26 14:05:19 2013  Zachary Scott  <e@zzak.io>
+
+	* ext/fiddle/*: [DOC] More doc on dlopen and RTLD_DEFAULT from r42184
+
+Fri Jul 26 13:08:53 2013  Zachary Scott  <e@zzak.io>
+
+	* ext/fiddle/lib/fiddle.rb: [DOC] Document Fiddle.dlopen(nil)
+	* ext/fiddle/handle.c: [DOC] Document Fiddle::Handle.new(nil)
+
+Fri Jul 26 13:04:15 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* load.c (rb_load_internal): use rb_load_file_str() to keep path
+	  encoding.
+
+	* load.c (rb_require_safe): search in OS path encoding for Windows.
+
+	* ruby.c (rb_load_file_str): load file with keeping path encoding.
+
+	* win32/file.c (rb_file_load_ok): use WCHAR type API assuming incoming
+	  path is encoded in UTF-8.  [ruby-core:56136] [Bug #8676]
+
+	* file.c (rb_str_encode_ospath): simplify using rb_str_conv_enc().
+
+	* win32/file.c (fix_string_encoding): simplify with rb_str_conv_enc().
+
+	* win32/file.c (convert_mb_to_wchar): use bare pointer instead of
+	  VALUE, and remove useless argument.
+
+Fri Jul 26 11:42:07 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* rational.c (f_round_common): Rational is expected to be returned by
+	  Rational#*, but mathn.rb breaks that assumption.  [ruby-core:56177]
+	  [Bug #8687]
+
+Fri Jul 26 01:37:45 2013  NARUSE, Yui  <naruse@ruby-lang.org>
+
+	* include/ruby/ruby.h: check defined(USE_RGENGC_LOGGING_WB_UNPROTECT)
+
+Fri Jul 26 01:21:41 2013  NARUSE, Yui  <naruse@ruby-lang.org>
+
+	* file.c (rb_file_expand_path_internal): fix r42160; skip '~'.
+
+Thu Jul 25 17:53:18 2013  NARUSE, Yui  <naruse@ruby-lang.org>
+
+	* lib/net/http.rb (Net::HTTP#connect): disable Nagle's algorithm on
+	  HTTP connection. [ruby-core:56158] [Feature #8681]
+
+Thu Jul 25 17:49:42 2013  NARUSE, Yui  <naruse@ruby-lang.org>
+
+	* re.c (rb_reg_to_s): convert closing parenthesis to the target encoding
+	  if it is ASCII incompatible encoding. [ruby-core:56063] [Bug #8650]
+
+Thu Jul 25 17:21:21 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* encoding.c (is_obj_encoding): new macro to check if obj is an
+	  Encoding.  obj can be any type while is_data_encoding expects T_DATA
+	  only.
+
+Thu Jul 25 17:17:52 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* file.c (rb_file_expand_path_internal): should clear coderange after
+	  copying user name as binary data.
+
+Thu Jul 25 16:17:55 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* encoding.c (check_encoding): Check T_DATA or not.
+	  is_data_encoding(obj) assumes that `obj' is T_DATA.
+
+Thu Jul 25 13:06:46 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* dir.c (dir_s_home): use rb_home_dir_of and rb_default_home_dir.
+
+	* file.c (rb_home_dir_of): split from rb_home_dir() for the home
+	  directry of the given user, and the user name is a VALUE, not a bare
+	  pointer.  should raise if the user does not exist.
+
+	* file.c (rb_default_home_dir): split from rb_home_dir() for the home
+	  directry of the current user.
+
+Thu Jul 25 12:32:11 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* ext/openssl/ossl.c: support additional three thread synchronization
+	  functions. [ruby-trunk - Bug #8386]
+
+Thu Jul 25 07:15:58 2013  Eric Hodel  <drbrain@segment7.net>
+
+	* lib/rubygems:  Import RubyGems from master as of commit 4ff70cc
+	* test/rubygems:  ditto.
+
+Wed Jul 24 20:57:44 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* compile.c (iseq_set_arguments): use RARRAY_RAWPTR() instead of
+	  RARRAY_PTR() because there is no new reference.
+
+	* compile.c (iseq_set_exception_table): ditto.
+
+Wed Jul 24 19:49:54 2013  NARUSE, Yui  <naruse@ruby-lang.org>
+
+	* lib/uri/generic.rb (find_proxy): raise BadURIError if the URI is
+	  a relative URI. [Bug #8645]
+
+Wed Jul 24 18:56:06 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* vm_insnhelper.c (vm_expandarray): use RARRAY_RAWPTR() instead of
+	  RARRAY_PTR() because there is no new reference.
+
+	* vm_insnhelper.c (vm_caller_setup_args): ditto.
+
+	* vm_insnhelper.c (vm_yield_setup_block_args): ditto.
+
+Wed Jul 24 18:40:11 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* array.c, gc.c: move ary_unprotect_logging() into
+	  rb_gc_unprotect_logging() which is general version
+
+	* include/ruby/ruby.h: add USE_RGENGC_LOGGING_WB_UNPROTECT
+	  to enable.
+
+Wed Jul 24 17:37:50 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* file.c (rb_file_expand_path_internal): preserve the file name
+	  encoding in an exception message.
+
+Wed Jul 24 08:04:49 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* test/-ext-/tracepoint/test_tracepoint.rb: add GC on/off to count
+	  GC events strictly.
+
+Tue Jul 23 23:19:24 2013  NARUSE, Yui  <naruse@ruby-lang.org>
+
+	* ext/openssl/extconf.rb (CRYPTO_THREADID): check exist or not.
+
+	* ext/openssl/ossl.c (ossl_thread_id): use rb_nativethread_self()
+	  implemented at r42137 to allow threads which doesn't associated with
+	  Ruby thread to use openssl functions.
+
+	* ext/openssl/ossl.c (Init_ossl_locks): If CRYPTO_THREADID is defined
+	  (OpenSSL 1.0.0 or later has it) use CRYPTO_THREADID_set_callback()
+	  instead of CRYPTO_set_id_callback() because its argument is
+	  unsigned long; it may cause id collision on mswin64
+	  whose sizeof(unsigned long) < sizeof(void*).
+	  http://www.openssl.org/docs/crypto/threads.html
+
+	* ext/openssl/ossl.c (ossl_threadid_func): defined for above.
+
+Tue Jul 23 20:47:36 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c: Move functions.
+
+Tue Jul 23 20:14:55 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bary_divmod): Add special cases for x < y easily detected
+	  and nx == 2 && ny == 2.
+
+Tue Jul 23 19:48:38 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* thread_(pthread|win32).h: rename rb_thread_cond_t to
+	  rb_nativethread_cond_t.
+
+	* thread.c, thread_pthread.c, thread_win32.c, vm_core.h: catch up
+	  renaming.
+
+Tue Jul 23 19:44:32 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* thread_native.h: add rb_nativethread_self() which returns
+	  current running native thread identifier.
+
+	* thread_[pthread|win32].c: implement rb_nativethread_self().
+
+Tue Jul 23 19:34:11 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* thread_pthread.h, thread_win32.h: rename rb_thread_id_t to
+	  rb_nativethread_id_t.
+
+	* thread_pthread.c, vm_core.h: use rb_nativethread_id_t.
+
+Tue Jul 23 18:56:11 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* ext/openssl/ossl.c: use system native (system provided)
+	  thread locking APIs added by last commit.
+	  This patch fixes [Bug #8386].
+	  "rb_mutex_*" APIs control only "Ruby" threads.
+	  Not for native threads.
+
+Tue Jul 23 18:44:15 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* thread_native.h: added.
+	  Move native thread related lines from vm_core.h.
+	  And declare several functions "rb_nativethread_lock_*",
+	  manipulate locking.
+
+	* common.mk: add thread_native.h.
+
+	* thread.c: add functions "rb_nativethread_lock_*".
+
+	* thread.c, thread_[pthread,win32].[ch]: rename rb_thread_lock_t
+	  to rb_nativethread_lock_t to make it clear that this lock is for
+	  native threads, not for ruby threads.
+
+Tue Jul 23 16:14:57 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* gc.c (gc_before_sweep): fix spacing.
+
+Tue Jul 23 15:57:11 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* gc.c (heap_get_freeobj): clear slot->freelist here.
+	  This means that this slot doesn't have any free objects.
+	  And store this slot with objspace->heap.using_slot.
+
+	* gc.c (gc_before_sweep): restore objspace->freelist
+	  into objspace->heap.using_slot->freelist.
+	  This means that using_slot has free objects which are
+	  pointed from objspace->freelist.
+
+	* gc.c (gc_slot_sweep): do not need to clear slot->freelist.
+
+Tue Jul 23 09:34:49 2013  Zachary Scott  <e@zzak.io>
+
+	* sample/drb/README*.rdoc: [DOC] migrate DRb sample READMEs to rdoc
+
+Tue Jul 23 09:28:05 2013  Zachary Scott  <e@zzak.io>
+
+	* lib/drb/invokemethod.rb: [DOC] nodoc InvokeMethod18Mixin
+
+Tue Jul 23 08:44:37 2013  Eric Hodel  <drbrain@segment7.net>
+
+	* ext/openssl/ossl_asn1.c (asn1time_to_time):  Implement YYMMDDhhmmZ
+	  format for ASN.1 UTCTime.  [ruby-trunk - Bug #8664]
+	* test/openssl/test_asn1.rb:  Test for the above.
+
+Tue Jul 23 08:11:32 2013  Zachary Scott  <e@zzak.io>
+
+	* lib/rexml/streamlistener.rb: [DOC] Fix examples in
+	  REXML::StreamListener#entitydecl patch by Ippei Obayashi [Bug #8665]
+
+Tue Jul 23 07:44:59 2013  Eric Hodel  <drbrain@segment7.net>
+
+	* lib/rubygems:  Import RubyGems from master as of commit b165260
+	* test/rubygems:  ditto.
+
+Tue Jul 23 07:14:31 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bary_mulsub_1xN): New function.
+	  (bary_mul_toom3): Use bary_mulsub_1xN.
+
+Tue Jul 23 03:32:23 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (KARATSUBA_BALANCED): New macro.
+	  (TOOM3_BALANCED): Ditto.
+	  (bary_mul_balance_with_mulfunc): Use KARATSUBA_BALANCED and
+	  TOOM3_BALANCED.
+	  (rb_big_mul_balance): Relax a condition.
+	  (rb_big_mul_karatsuba): Use KARATSUBA_BALANCED.
+	  (rb_big_mul_toom3): Use TOOM3_BALANCED.
+	  (bary_mul_karatsuba_branch): Use KARATSUBA_BALANCED.
+	  (bary_mul_toom3_branch): Use TOOM3_BALANCED.
+
+Tue Jul 23 01:34:45 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bigdivrem_mulsub): Extracted from bigdivrem1.
+	  (bigdivrem1): Use bary_add.
+
+Mon Jul 22 18:39:52 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* string.c (rb_str_enumerate_chars): specify array capa
+	  with str_strlen().
+
+	* string.c (rb_str_enumerate_codepoints): ditto.
+
+Mon Jul 22 18:01:33 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* string.c (rb_str_enumerate_chars): specify array capa.
+
+Mon Jul 22 17:24:14 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* string.c (rb_str_each_char_size): performance improvement by
+	  using rb_str_length().
+
+Mon Jul 22 16:32:48 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* vm_eval.c (eval_string_with_cref): check by Check_TypedStruct
+	  instead of rb_obj_is_kind_of.
+
+Mon Jul 22 13:19:22 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* array.c (ary_resize_capa): use RARRAY_RAWPTR() because
+	  this code creates no new references.
+
+Mon Jul 22 12:58:18 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* array.c (ary_memfill): added.
+
+	* array.c (rb_ary_initialize): use ary_memfill().
+
+	* array.c (rb_ary_fill): ditto.
+
+	* array.c (rb_ary_slice_bang): use RARRAY_RAWPTR() because
+	  this code creates no new references.
+
+Mon Jul 22 10:09:46 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* gc.c (gc_slot_sweep): need to add empty RVALUE as freeobj.
+
+Mon Jul 22 09:48:31 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* vm_eval.c (eval_string_with_cref): use the given file name unless
+	  eval even if scope is given.  additional fix for [Bug #8436].
+	  based on the patch by srawlins at [ruby-core:56099] [Bug #8662].
+
+Mon Jul 22 09:24:19 2013  Kouji Takao  <kouji@takao7.net>
+
+	* ext/readline/readline.c (Init_readline): added
+	  Readline.delete_text. [ruby-dev:45789] [Feature #6626]
+	* ext/readline/extconf.rb: check for rl_delete_text() in Readline library.
+
+	  Thanks, Nobuyoshi Nakada, for the patch.
+
+Mon Jul 22 03:15:54 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* ext/date/date_parse.c (rfc2822_cb): check if wday is given, since it
+	  can be omitted.
+
+Mon Jul 22 00:15:20 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bary_sq_fast): Refine expressions.
+
+Sun Jul 21 21:08:59 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bary_mul): Use simple multiplication if yl is small.
+	  (rb_cstr_to_inum): Invoke bigsq instead of bigmul0.
+	  (bigsq): Re-implemented.
+	  (bigmul0): Invoke bigsq if two arguments are identical.
+
+Sun Jul 21 09:58:19 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bary_mul_toom3): New function based on bigmul1_toom3.
+	  (bary_mul_toom3_branch): Call bary_mul_toom3.
+	  (rb_big_mul_toom3): Ditto.
+	  (bigmul1_toom3): Removed.
+	  (big_real_len): Ditto.
+	  (big_split): Ditto.
+	  (big_split3): Ditto.
+
+Sun Jul 21 08:12:16 2013  Kazuki Tsujimoto  <kazuki@callcc.net>
+
+	* proc.c (proc_to_s): use PRIsVALUE to preserve the result encoding.
+
+Sun Jul 21 03:36:18 2013  NARUSE, Yui  <naruse@ruby-lang.org>
+
+	* hash.c (rb_hash_flatten): use NUM2INT to raise TypeError on 32bit
+	  platform. it's introduced by r42039
+
+Sun Jul 21 01:07:45 2013  Benoit Daloze  <eregontp@gmail.com>
+
+	* common.mk (help): Fix environment variable name and argument.
+	  Actually it can also be a directory or any argument for
+	  test/unit runner. [Fixes GH-363]
+
+Sat Jul 20 22:44:50 2013  Zachary Scott  <e@zzak.io>
+
+	* common.mk: Document running a single test [Fixes GH-363]
+	  Patch by Avdi Grimm https://github.com/ruby/ruby/pull/363
+
+Sat Jul 20 22:39:56 2013  Zachary Scott  <e@zzak.io>
+
+	* sample/*: whitespace patch by Sergio Campama [Fixes GH-364]
+	  https://github.com/ruby/ruby/pull/364
+
+Sat Jul 20 22:33:13 2013  Zachary Scott  <e@zzak.io>
+
+	* doc/regexp.rdoc: [DOC] Fix typo in example [Fixes GH-365]
+	  Patch by Juanito Fatas https://github.com/ruby/ruby/pull/365
+
+Sat Jul 20 17:46:03 2013  NARUSE, Yui  <naruse@ruby-lang.org>
+
+	* string.c (rb_str_succ): add missing case NEIGHBOR_WRAPPED.
+	  r42078 caused buggy behavior like "\xFF".b -> "\x01\xFF".b
+
+Sat Jul 20 15:22:38 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* array.c (rb_ary_resize): use simple memcpy because there are no new
+	  references.
+
+Sat Jul 20 15:02:51 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* safe.c (ruby_safe_level_4_warning): define for old extension
+	  libraries.  [Bug #8652]
+
+Sat Jul 20 14:38:00 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* array.c (ary_make_shared): make shared array shady.
+	  Making non-shady shared array causes SEGV (see rubyci).
+	  It seems a bug around shared array.
+
+Sat Jul 20 12:14:07 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* string.c (enc_succ_char, enc_pred_char): consider wchar case.
+	  [ruby-core:56071] [Bug #8653]
+
+	* string.c (rb_str_succ): do not replace with invalid char.
+
+	* encoding.c (rb_enc_code_to_mbclen): add new function which returns
+	  mbclen from codepoint like as rb_enc_codelen() but 0 for invalid
+	  char.
+
+	* include/ruby/encoding.h (rb_enc_code_to_mbclen): declaration and
+	  shortcut macro.
+
+Fri Jul 19 21:59:12 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* gc.c: declare type_name() at the beginning of file.
+
+Fri Jul 19 21:35:09 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* array.c: reduce shady operations.
+
+	* array.c (rb_ary_modify, ary_make_partial, rb_ary_splice,
+	  rb_ary_replace, rb_ary_eql, rb_ary_compact_bang):
+	  use RARRAY_RAWPTR() instead of RARRAY_PTR().
+
+	* array.c (rb_ary_shift): use RARRAY_PTR_USE() without WB because
+	  there are not new relations.
+
+	* array.c (ary_ensure_room_for_unshift): ditto.
+
+	* array.c (rb_ary_sort_bang): ditto.
+
+	* array.c (rb_ary_delete_at): ditto.
+
+	* array.c (rb_ary_reverse_m): use RARRAY_RAWPTR() because
+	  there are not new relations.
+
+Fri Jul 19 20:58:20 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* array.c: reduce shade operations.
+
+	* array.c (rb_ary_modify): use RARRAY_RAWPTR().
+
+	* array.c (ary_make_substitution, rb_ary_s_create, ary_make_partial,
+	  rb_ary_splice, rb_ary_resize, rb_ary_rotate_m, rb_ary_times):
+	  use ary_memcpy().
+
+Fri Jul 19 19:55:28 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* array.c (ary_mem_clear): added. This operation doesn't need WB
+	  because this operation creates a reference to Qnil.
+
+	* array.c (ary_make_shared, rb_ary_store, rb_ary_shift_m,
+	  rb_ary_splice, rb_ary_resize, rb_ary_fill): use ary_mem_clear()
+	  instead of rb_mem_clear().
+
+	* array.c (ary_make_shared): use RARRAY_RAWPTR() instead of RARRAY_PTR().
+
+Fri Jul 19 19:18:51 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* array.c: fix commit miss.
+	  RGENGC_UNPROTECT_LOGGING should be 0.
+
+Fri Jul 19 19:15:30 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* array.c (rb_ary_resurrect): use RARRAY_RAWPTR() because there is no
+	  writing.
+
+	* array.c (rb_ary_new_from_values): use ary_memcpy().
+
+Fri Jul 19 19:07:31 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* array.c (ary_memcpy): add a function to copy VALUEs into ary
+	  with write barrier. If ary is promoted, use write barrier correctly.
+
+	* array.c (rb_ary_cat, rb_ary_unshift_m, rb_ary_dup,
+	  rb_ary_sort_bang, rb_ary_replace, rb_ary_plus): use ary_memcpy().
+
+Fri Jul 19 15:32:57 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* array.c (rb_ary_store): use RARRAY_PTR_USE() instead of RARRAY_PTR().
+	  Clearing memory space doesn't need WBs.
+
+Fri Jul 19 15:19:37 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* array.c (ary_ensure_room_for_push): use RARRAY_RAWPTR() instead of
+	  RARRAY_PTR. In this code, there are no "write" operation.
+
+	* array.c (rb_ary_equal): ditto.
+
+	* array.c (recursive_equal): ditto.
+
+Fri Jul 19 15:09:22 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* gc.c, internal.h (rb_gc_writebarrier_remember_promoted): add a new
+	  function to remember an specified object. This api is only
+	  experimental (strongly depend on WB/rgengc strategy).
+
+Fri Jul 19 14:56:00 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* array.c (ary_unprotect_logging): use (void *) for first parameter
+	  because VALUE is not defined before including ruby/ruby.h.
+
+Fri Jul 19 14:19:48 2013  Kazuki Tsujimoto  <kazuki@callcc.net>
+
+	* ext/pathname/pathname.c (path_inspect): use PRIsVALUE to preserve
+	  the result encoding.
+
+Fri Jul 19 12:35:41 2013  Tanaka Akira  <akr@fsij.org>
+
+	* test/socket/test_tcp.rb (test_initialize_failure): Use EADDRNOTAVAIL
+	  to test an error message generated by bind() failure.
+
+Fri Jul 19 11:27:38 2013  Zachary Scott  <e@zzak.io>
+
+	* lib/racc/parser.rb: [DOC] Capitalize "Ruby" in documentation
+	  Patch by Dave Worth https://github.com/ruby/ruby/pull/341
+
+Fri Jul 19 11:26:28 2013  Zachary Scott  <e@zzak.io>
+
+	* ext/psych/lib/psych*: [DOC] Capitalize "Ruby" in documentation
+	  Patch by Dave Worth https://github.com/ruby/ruby/pull/341
+
+Fri Jul 19 11:25:12 2013  Zachary Scott  <e@zzak.io>
+
+	* lib/rdoc/*: [DOC] Capitalize "Ruby" in documentation
+	  Patch by Dave Worth https://github.com/ruby/ruby/pull/341
+
+Fri Jul 19 11:23:55 2013  Zachary Scott  <e@zzak.io>
+
+	* lib/rubygems*: [DOC] Capitalize "Ruby" in documentation
+	  Patch by Dave Worth https://github.com/ruby/ruby/pull/341
+
+Fri Jul 19 11:16:54 2013  Akinori MUSHA  <knu@iDaemons.org>
+
+	* lib/set.rb (Set#to_set): Define Set#to_set so that aSet.to_set
+	  returns self. [Fixes GH-359]
+
+Fri Jul 19 11:10:23 2013  Zachary Scott  <e@zzak.io>
+
+	* lib/rake/*: [DOC] Capitalize "Ruby" in documentation
+	  Patch by Dave Worth https://github.com/ruby/ruby/pull/341
+
+Fri Jul 19 01:04:14 2013  Tanaka Akira  <akr@fsij.org>
+
+	* ext/-test-/bignum/intpack.c: Renamed from ext/-test-/bignum/pack.c.
+	  (Init_intpack): Renamed from Init_pack.
+	  Reported by Naohisa Goto.  [ruby-dev:47526] [Bug #8655]
+
+Fri Jul 19 00:54:27 2013  Benoit Daloze  <eregontp@gmail.com>
+
+	* test/ruby/test_array.rb (test_count): add a test case for #count
+	  with an argument. See Bug #8654.
+
+Thu Jul 18 23:45:06 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* array.c (rb_ary_eql): compare RARRAY_PTR() for performance
+	  improvement in case of that self and other are shared.
+
+Thu Jul 18 22:46:42 2013  Zachary Scott  <e@zzak.io>
+
+	* lib/cgi.rb: [DOC] Capitalize "Ruby" in documentation [Fixes GH-341]
+	  Patch by Dave Worth https://github.com/ruby/ruby/pull/341
+	* lib/webrick.rb: ditto
+	* lib/scanf.rb: ditto
+	* lib/xmlrpc/config.rb: ditto
+	* lib/resolv.rb: ditto
+	* lib/e2mmap.rb: ditto
+	* lib/fileutils.rb: ditto
+	* lib/mkmf.rb: ditto
+	* lib/cgi/session.rb: ditto
+	* lib/yaml.rb: ditto
+	* lib/erb.rb: ditto
+	* lib/irb.rb: ditto
+	* lib/tracer.rb: ditto
+	* lib/net/http.rb: ditto
+	* ext/syslog/lib/syslog/logger.rb: ditto
+	* sample/pty/expect_sample.rb: ditto
+
+Thu Jul 18 21:30:50 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bary_sq_fast): Specialize the last iteration of the
+	  outer loop.
+	  (bigfixize): A condition simplified.
+
+Thu Jul 18 21:15:41 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* array.c (rb_ary_equal): compare RARRAY_PTR() for performance
+	  improvement in case of that self and other are shared.
+
+Thu Jul 18 20:44:51 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* array.c (rb_ary_fill): use memfill().
+
+Thu Jul 18 20:35:14 2013  Benoit Daloze  <eregontp@gmail.com>
+
+	* array.c (rb_ary_count): check length to avoid SEGV
+	  while iterating. Remove other pointer loop when arg is given.
+
+	* test/ruby/test_array.rb (test_count): add test for bug.
+	  [ruby-core:56072] [Bug #8654]
+
+Thu Jul 18 18:14:36 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* array.c (rb_ary_count): iterate items appropriately.
+	  [Bug #8654]
+
+Thu Jul 18 17:35:41 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* hash.c (rb_hash_flatten): performance improvement by not using
+	  rb_hash_to_a() to avoid array creation with rb_assoc_new().
+
+Thu Jul 18 16:16:17 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* array.c: add logging feature for RGenGC's write barrier unprotect
+	  event.
+
+Thu Jul 18 15:45:47 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* include/ruby/ruby.h (RUBY_SAFE_LEVEL_CHECK): make only
+	  rb_set_safe_level(4) an error always but make rb_secure(4) an error
+	  only in the core.  [ruby-dev:47517] [Bug #8652]
+
+Thu Jul 18 15:42:01 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* include/ruby/ruby.h: fix spell miss.
+
+Thu Jul 18 15:11:11 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* include/ruby/ruby.h (ruby_safe_level_4): get rid of special
+	  character.  [ruby-dev:47512] [misc #8646]
+
+Thu Jul 18 14:51:39 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* array.c (ary_alloc): slim setup process.
+
+Thu Jul 18 14:37:57 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* string.c (str_alloc): no need to clear RString (already cleared).
+
+Thu Jul 18 12:57:47 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (BDIGITS_ZERO): Defined.
+	  (bary_pack): Use BDIGITS_ZERO.
+	  (bary_unpack): Ditto.
+	  (bary_mul_single): Ditto.
+	  (bary_mul_normal): Ditto.
+	  (bary_sq_fast): Ditto.
+	  (bary_mul_balance_with_mulfunc): Ditto.
+	  (bary_mul_precheck): Ditto.
+	  (bary_mul_toom3_branch): Ditto.
+	  (rb_cstr_to_inum): Ditto.
+	  (big_shift3): Ditto.
+	  (bigmul1_toom3): Ditto.
+	  (bary_divmod): Ditto.
+
+Thu Jul 18 06:30:02 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* gc.c: rename gc related functions with prefix "gc_".
+	  * before_gc_sweep() -> gc_before_sweep().
+	  * after_gc_sweep()  -> gc_after_sweep().
+	  * lazy_sweep()      -> gc_lazy_sweep().
+	  * rest_sweep()      -> gc_rest_sweep().
+	  * slot_sweep()      -> gc_slot_sweep().
+
+	* gc.c: rename a heap management function with prefix "heap_".
+	  * get_freeobj() -> heap_get_freeobj().
+
+	* gc.c: rename markable_object_p() to is_markable_object().
+
+Wed Jul 17 22:57:40 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* hash.c (delete_if_i): use ST_DELETE.
+
+Wed Jul 17 22:34:47 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c: An static assertion for relation of SIZEOF_LONG and
+	  SIZEOF_BDIGITS is added.
+	  (bary_mul_precheck): Reduce comparisons.
+	  (bary_mul): Invoke bary_sq_fast or bary_mul1 if the bignum size is
+	  small.
+	  (bigfixize): Resize the argument bignum here.
+	  (bignorm): Don't call bigtrunc after bigfixize.
+
+Wed Jul 17 22:13:26 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* hash.c (rb_hash_replace): performance improvement by using
+	  st_copy().
+
+Wed Jul 17 17:19:54 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* gc.c: rename heap management functions with prefix "heap_".
+	  * allocate_sorted_array() -> heap_allocate_sorted_array().
+	  * slot_add_freeobj()      -> heap_slot_add_freeobj().
+	  * assign_heap_slot()      -> heap_assign_slot().
+	  * add_heap_slots()        -> heap_add_slots().
+	  * init_heap()             -> heap_init().
+	  * set_heap_increment()    -> heap_set_increment().
+
+	* gc.c (initial_expand_heap): inlined in rb_gc_set_params().
+
+Wed Jul 17 17:12:23 2013  Matthew M. Boedicker  <matthewm@boedicker.org>
+
+	* hash.c (env_fetch): Add key name to message on ENV.fetch KeyError,
+	  as well as Hash#fetch.  [ruby-core:56062] [Feature #8649]
+
+Wed Jul 17 15:59:33 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* gc.c: catch up last changes for debugging/checking mode.
+
+Wed Jul 17 15:50:10 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* gc.c (rb_objspace_free): free slot itself.
+
+	* gc.c (objspace_each_objects): fix condition.
+	  Use slot->body instead of slot.
+
+	* gc.c (count_objects): use "slot" variable.
+
+Wed Jul 17 15:21:10 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* gc.c (unlink_heap_slot): fix memory leak.
+	  free slot itself at free_heap_slot().
+
+	  Reproduce-able code is here:
+	    N1 = 100_000; N2 = 1_000_000
+	    N1.times{ary = []; N2.times{ary << ''}}
+	  Maybe this problem is remaining in Ruby 2.0.0.
+
+	* gc.c (unlink_heap_slot): remove not working code.
+
+Wed Jul 17 14:31:13 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* gc.c: re-design the heap structure.
+
+	  (1) The heap is consists of a set of slots.
+	  (2) Each "slot" has a "slot_body".
+	      slot::start and slot::limit specify RVALUE beginning address
+	      and number of RVALUE in a "slot_body".
+	  (3) "slot_body" contains a pointer to slot (slot_body::header::slot)
+	      and an array of RVALUE.
+	  (4) heap::sorted is an array of "slots", sorted by an address of
+	      slot::body.
+
+	  See https://bugs.ruby-lang.org/projects/ruby-trunk/wiki/GC_design
+	  for more details (figure).
+
+	* gc.c: Avoid "heaps" terminology. It is ambiguous.
+
+Wed Jul 17 13:29:16 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* gc.c: fix heaps_header and heaps_slot to reduce memory consumption.
+	  (1) move heaps_header::start and limit to  heaps_slot.
+	  (2) remove heaps_header::end which can be calculated by start+limit.
+
+	* gc.c: catch up above change.
+
+Wed Jul 17 12:30:05 2013  Tanaka Akira  <akr@fsij.org>
+
+	* include/ruby/st.h (st_strcasecmp): Macro defined for compatibility.
+	  (st_strncasecmp): Ditto.
+
+Wed Jul 17 11:57:45 2013  Takeyuki FUJIOKA  <xibbar@ruby-lang.org>
+
+	* lib/cgi/util.rb (CGI::Util#escape, unescape): Avoid use of regexp
+	  special global variable. [Feature #8648] Thanks to fotos.
+
+Wed Jul 17 11:57:10 2013  Takeyuki FUJIOKA  <xibbar@ruby-lang.org>
+
+	* lib/erb.rb (ERB::Util#url_encode): Avoid use of regexp special global
+	  variable. [Feature #8648] Thanks to fotos.
+
+Wed Jul 17 08:12:41 2013  Tanaka Akira  <akr@fsij.org>
+
+	* st.c (st_locale_insensitive_strcasecmp): Renamed from st_strcasecmp.
+	  (st_locale_insensitive_strncasecmp): Renamed from st_strncasecmp.
+
+	* include/ruby/st.h: Follow above changes.
+
+	* include/ruby/ruby.h: Ditto.
+
+Wed Jul 17 00:14:59 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bigmul1_toom3): Use bigdivrem_single instead of bigdivrem.
+	  (big_three): Removed.
+	  (Init_Bignum): Don't initialize big_three.
+
+Tue Jul 16 21:46:03 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* configure.in: revert r42008. strcasecmp() uses the current locale.
+
+	* include/ruby/ruby.h: ditto.
+
+	* st.c (st_strcasecmp): ditto.
+
+Tue Jul 16 21:07:04 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* configure.in: check strcasecmp().
+
+	* include/ruby/ruby.h: use strcasecmp() as st_strcasecmp() if it
+	  exists.
+
+	* st.c (st_strcasecmp): define the function only if strcasecmp()
+	  doesn't exist.
+
+Tue Jul 16 20:21:28 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bigsq): Renamed from bigsqr.
+
+Tue Jul 16 19:42:08 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (USHORT): Unused macro removed.
+
+Tue Jul 16 19:18:51 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* gc.c: slim a path of newobj_of().
+
+	* gc.c (objspace): add a new field objspace::freelist, which contains
+	  available RVALUEs.
+
+	* gc.c (newobj_of): simply call new function `get_freeobj()'.
+	  get_freeobj() returns objspace::freelist. If  objspace::freelist
+	  is not available, refill objspace::freelist with a slot pointed by
+	  objspace::heap::free_slots.
+
+	* gc.c (before_gc_sweep): clear objspace::freelist.
+
+	* gc.c (slot_sweep): clear slot::freelist.
+
+	* gc.c (heaps_prepare_freeslot): renamed to heaps_prepare_freeslot.
+
+	* gc.c (unlink_free_heap_slot): remove unused function.
+
+	* gc.c (rb_free_const_table): remove unused function.
+
+Tue Jul 16 19:05:12 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (big_shift3): Big shift width is not a problem for right
+	  shift.
+
+Tue Jul 16 18:50:08 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* array.c (rb_ary_count): [DOC] fix typo.  Array#count uses ==, not
+	  ===.  a question at asakusa.rb ML.
+
+Tue Jul 16 18:35:48 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bary_mul_karatsuba): Avoid duplicate calculation when
+	  squaring.
+	  (bary_mul_toom3_branch): Ditto.
+
+Tue Jul 16 17:43:22 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* gc.c (link_free_heap_slot): removed.
+
+	* gc.c (slot_sweep): use `heaps_add_freeslot' instead of
+	  `link_free_heap_slot'.
+
+	* gc.c (assign_heap_slot): use local variable `slot' instead of
+	  `heaps'.
+
+Tue Jul 16 17:21:39 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* gc.c (assign_heap_slot): refactoring variable names.
+
+	* gc.c (slot_add_freeobj): added.
+
+	* gc.c (heaps_add_freeslot): added.
+
+	* gc.c (finalize_list, rb_gc_force_recycle, slot_sweep): use
+	  `slot_add_freeobj' instead of modifying linked list directly.
+
+Tue Jul 16 16:30:58 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* gc.c (lazy_sweep): refactoring.
+
+Tue Jul 16 13:32:06 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* encoding.c (enc_set_index): since r41967, old terminator is dealt
+	  with in str_fill_term().  should not consider it here because this
+	  function is called before any encoding is set.
+
+Tue Jul 16 11:12:03 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* proc.c (rb_block_arity): raise ArgumentError if no block given.
+
+Tue Jul 16 08:15:22 2013  Zachary Scott  <e@zzak.io>
+
+	* ext/bigdecimal/lib/bigdecimal/util.rb: [DOC] document top-level
+	  classes from BigDecimal utils native extensions
+
+Tue Jul 16 03:23:03 2013  Zachary Scott  <e@zzak.io>
+
+	* numeric.c: [DOC] improve rdoc formatting for parameters and links
+
+Mon Jul 15 14:40:00 2013  Tanaka Akira  <akr@fsij.org>
+
+	* include/ruby/intern.h (rb_big2str0): Deprecated.
+
+	* bignum.c (rb_big2str1): Renamed from rb_big2str0.
+	  (rb_big2str0): Deprecated wrapper for rb_big2str1.
+	  (rb_big2str): Invoke rb_big2str1 instead of rb_big2str0.
+
+Mon Jul 15 14:13:02 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* struct.c (rb_struct_each_pair): use rb_yield_values(2, key, value)
+	  instead of rb_yield(rb_assoc_new(key, value)) if rb_block_arity()
+	  is greater than 1.
+
+Mon Jul 15 13:46:26 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c: Add static assertions.
+
+Mon Jul 15 13:36:02 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* hash.c (rb_hash_each_pair): performance improvement by using
+	  rb_block_arity().
+
+Mon Jul 15 13:15:37 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* proc.c (rb_block_arity): create internal API rb_block_arity().
+	  it returns arity of given block.
+
+Mon Jul 15 13:07:27 2013  Yuki Yugui Sonoda  <yugui@yugui.jp>
+
+	* lib/prime.rb (Prime::EratosthenesGenerator,
+	  Prime::EratosthenesSieve): New implementation by
+	  robertjlooby <robertjlooby AT gmail.com>.
+
+	* test/test_prime.rb: updated with new method name
+
+Mon Jul 15 11:32:46 2013  Zachary Scott  <e@zzak.io>
+
+	* numeric.c (rb_cNumeric): [DOC] Added comment for Numeric to fix doc
+
+Mon Jul 15 11:24:48 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (maxpow_in_bdigit_dbl): Useless #if removed.
+
+Mon Jul 15 11:10:46 2013  Zachary Scott  <e@zzak.io>
+
+	* bignum.c (rb_big_coerce): [DOC] Add docs for Bignum#coerce
+	  Based on patch by Juanito Fatas [Fixes GH-360]
+	  https://github.com/ruby/ruby/pull/360
+
+Mon Jul 15 10:56:01 2013  Zachary Scott  <e@zzak.io>
+
+	* thread.c (mutex_sleep): [DOC] Awake thread will reacquire lock
+	  By Tim Abdulla [Fixes GH-342] https://github.com/ruby/ruby/pull/342
+
+Mon Jul 15 10:45:09 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (nlz16): Use __builtin_clz if possible.
+	  (nlz32): Use __builtin_clz or __builtin_clzl if possible.
+	  (nlz64): Use __builtin_clzl or __builtin_clzll if possible.
+	  (nlz128): Use __builtin_clzll if possible.
+
+	* configure.in: Check __builtin_clz, __builtin_clzl and
+	  __builtin_clzll.
+
+Mon Jul 15 09:39:07 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (power_cache_get_power): Use bitsize instead of ceil_log2.
+	  (ones): Removed.
+	  (next_pow2): Removed.
+	  (floor_log2): Removed.
+	  (ceil_log2): Removed.
+
+	* configure.in (__builtin_popcountl): Don't check.
+
+Mon Jul 15 02:47:09 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* localeinit.c (rb_locale_charmap, Init_enc_set_filesystem_encoding):
+	  move from encoding.c.
+
+	* miniinit.c (rb_locale_charmap, Init_enc_set_filesystem_encoding):
+	  define miniruby specific functions only.
+
+Mon Jul 15 02:32:58 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* encoding.c (rb_enc_init): no longer needs NO_PRESERVED_ENCODING.
+
+	* encoding.c (enc_inspect): defer loading autoloaded encoding.
+
+	* encoding.c (enc_check_encoding): use is_data_encoding() to check
+	  type consistently.
+
+	* encoding.c (must_encoding): return rb_encoding* instead of encoding
+	  index.
+
+	* encoding.c (enc_check_encoding): use is_data_encoding() to check
+	  type consistently.
+
+	* encoding.c (must_encoding): return rb_encoding* instead of encoding
+	  index.
+
+Mon Jul 15 02:21:39 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* string.c (str_fill_term): consider old terminator length, and should
+	  not use rb_enc_ascget since it depends on the current encoding which
+	  may not be compatible with the new terminator.  [Bug #8634]
+
+	* encoding.c (enc_inspect): use PRIsVALUE to preserve the result
+	  encoding.
+
+Sun Jul 14 23:21:47 2013  Tanaka Akira  <akr@fsij.org>
+
+	* configure.in: Check __builtin_popcountl, __builtin_bswap32 and
+	  __builtin_bswap64.
+
+	* internal.h (swap32): Use the configure result for the condition to
+	  use __builtin_bswap32.
+	  (swap64): Use the configure result for the condition to use
+	  __builtin_bswap64.
+
+	* bignum.c (ones): Use the configure result for the condition to use
+	  __builtin_popcountl.
+	  (bary_unpack_internal): Use appropriate types for swap argument.
+
+Sun Jul 14 22:21:11 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bary_subb): Support xn < yn.
+	  (bigsub_core): Removed.
+	  (bigsub): Don't compare before subtraction.  Just subtract and
+	  get the two's complement if the subtraction causes a borrow.
+
+Sun Jul 14 00:36:03 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (DIGSPERLONG): Unused macro removed.
+	  (DIGSPERLL): Ditto.
+
+Sun Jul 14 00:32:51 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (rb_big_aref): Less scan when the number is negative.
+
+Sun Jul 14 00:17:42 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (big_shift): Avoid signed integer overflow.
+
+Sun Jul 14 00:14:15 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bary_mul_precheck): Use bary_small_lshift or
+	  bary_mul_normal if xl is 1.
+
+Sat Jul 13 22:58:16 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (big_shift3): New function.
+	  big_lshift and big_rshift are merged.
+	  (big_shift2): New function.
+	  (big_lshift): Use big_shift3.
+	  (big_rshift): Ditto.
+	  (check_shiftdown): Removed.
+	  (rb_big_lshift): Use big_shift2 and big_shift3.
+	  (rb_big_rshift): Ditto.
+	  (big_lshift): Removed.
+	  (big_rshift): Ditto.
+
+Sat Jul 13 15:51:38 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bary_small_lshift): Use size_t instead of long.
+	  (bary_small_rshift): Ditto.
+
+Sat Jul 13 15:33:33 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bary_small_lshift): Functions moved to remove
+	  declaration.
+	  (bary_small_rshift): Ditto.
+
+Sat Jul 13 12:27:34 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* encoding.c (rb_enc_associate_index): fill new terminator length, not
+	  old one.
+
+Sat Jul 13 12:24:24 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* ext/win32: move from ext/dl and ext/fiddle.  since ext/extmk.rb
+	  builds extensions in alphabetical order, compiled?('fiddle') under
+	  ext/dl makes no sense.
+
+Sat Jul 13 09:26:09 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (biglsh_bang): Removed.
+	  (bigrsh_bang): Ditto.
+	  (bigmul1_toom3): Use bary_small_lshift and bary_small_rshift.
+
+Sat Jul 13 01:04:43 2013  Zachary Scott  <e@zzak.io>
+
+	* lib/rubygems/psych_additions.rb: Ignore Psych docs here
+
+Fri Jul 12 18:10:46 2013  NAKAMURA Usaku  <usa@ruby-lang.org>
+
+	* ext/fiddle/win32/lib/win32/registry.rb
+	  (Win32::Registry::API#make_wstr): same as r41922.
+
+Fri Jul 12 16:28:37 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* encoding.c (rb_enc_associate_index): refill the terminator if it
+	  becomes longer than before.  [ruby-dev:47500] [Bug #8624]
+
+	* string.c (str_null_char, str_fill_term): get rid of out of bound
+	  access.
+
+	* string.c (rb_str_fill_terminator): add a parameter for the length of
+	  new terminator.
+
+Fri Jul 12 11:26:25 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* hash.c (rb_hash_reject_bang): do not call rb_hash_foreach() if RHash
+	  has ntbl and it is empty.
+
+Fri Jul 12 11:17:41 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* hash.c (recursive_hash): use RHASH_SIZE() to check hash size.
+
+Fri Jul 12 00:20:00 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* hash.c (rb_hash_size): use RHASH_SIZE().
+
+Fri Jul 12 00:08:24 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* hash.c (rb_hash_values): set array capa to RHASH_SIZE().
+
+Thu Jul 11 23:54:45 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* hash.c (rb_hash_keys): set array capa to RHASH_SIZE().
+
+Thu Jul 11 21:30:17 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* win32/win32.c (rb_w32_pow): undef pow to get rid of infinite
+	  recursive call.  re-fix [Bug #8495].  [ruby-core:55923] [Bug #8621]
+
+Thu Jul 11 20:18:13 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* ext/dl/win32/lib/win32/registry.rb (Win32::Registry::API#make_wstr):
+	  remove workaround to append WCHAR terminator.
+
+	* transcode.c (str_encode_associate): fill terminator after conversion.
+
+	* string.c (rb_enc_str_new, rb_str_set_len, rb_str_resize): fill
+	  minimum length of the encoding as the terminator.
+
+	* string.c (str_buf_cat, rb_str_buf_append, rb_str_splice_0): ditto.
+
+	* string.c (str_make_independent_expand, rb_str_modify_expand): make
+	  the capacity enough for multi-byte terminator.
+
+	* string.c (rb_string_value_cstr): fill minimum length of the encoding
+	  as the terminator.
+
+	* string.c (rb_string_value_cstr): check null char in char, not in
+	  byte.
+
+Thu Jul 11 14:48:35 2013  Zachary Scott  <e@zzak.io>
+
+	* array.c: Replace confusing example for #reverse_each in overview
+	  Patch by Earl St Sauver [Fixes documenting-ruby/ruby-12]
+	  https://github.com/documenting-ruby/ruby/pull/12
+
+Thu Jul 11 14:22:37 2013  Zachary Scott  <e@zzak.io>
+
+	* test/drb/ut_eq.rb: Use localhost for drb tests [Bug #7311]
+	  Patch by Vit Ondruch [ruby-core:49101]
+	* test/drb/ut_array.rb: ditto
+	* test/drb/ut_array_drbssl.rb: ditto
+
+Thu Jul 11 13:48:03 2013  Zachary Scott  <e@zzak.io>
+
+	* sprintf.c: Fix typo patch by @hynkle [Fixes GH-357]
+	  https://github.com/ruby/ruby/pull/357
+
+Thu Jul 11 13:00:34 2013  Zachary Scott  <e@zzak.io>
+
+	* lib/securerandom.rb: Refactor conditions by Rafal Chmiel
+	  [Fixes GH-326] https://github.com/ruby/ruby/pull/326
+
+Thu Jul 11 12:04:47 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c: Don't use toom3 after once karatsuba is chosen.
+	  (mulfunc_t): New type.
+	  (bary_mul_toom3_start): Renamed from bary_mul.
+	  (bary_mul_karatsuba_start): Renamed from bary_mul.
+	  (bary_mul_balance_with_mulfunc): Renamed from bary_mul_balance and
+	  new argument, mulfunc, is added.
+	  (rb_big_mul_balance): Invoke bary_mul_balance_with_mulfunc with
+	  bary_mul_toom3_start.
+	  (bary_mul_karatsuba): Invoke bary_mul_karatsuba_start instead of
+	  bary_mul.
+	  (bary_mul_precheck): Extracted from bary_mul.
+	  (bary_mul_karatsuba_branch): Extracted from bary_mul.
+	  (bary_mul_karatsuba_start): New function to call bary_mul_precheck
+	  and bary_mul_karatsuba_branch.
+	  (bary_mul_toom3_branch): Extracted from bary_mul.
+	  (bary_mul_toom3_start): New function to call bary_mul_precheck and
+	  bary_mul_toom3_branch.
+	  (bary_mul): Just call bary_mul_toom3_start.
+	  Arguments for work memory are removed.
+	  (rb_cstr_to_inum): Follow the bary_mul change.
+	  (bigmul0): Ditto.
+
+Thu Jul 11 10:46:38 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* tool/probes_to_wiki.rb: fix usage comment.  use Enumerable#grep
+	  which yields each elements to reduce unnecessary array.
+
+Thu Jul 11 10:09:18 2013  NARUSE, Yui  <naruse@ruby-lang.org>
+
+	* process.c (rb_daemon): daemon(3) is implemented with fork(2).
+	  Therefore it needs rb_thread_atfork(). (and revert r41903)
+
+Thu Jul 11 03:22:10 2013  Aaron Patterson <aaron@tenderlovemaking.com>
+
+	* tool/probes_to_wiki.rb: adding a script to convert probes.d to wiki
+	  format for easy wiki updates.
+
+Thu Jul 11 00:54:07 2013  Zachary Scott  <zachary@zacharyscott.net>
+
+	* man/ri.1: Incorrect use of .Dd macro [Bug #8620] by Tristan Hill
+
+Thu Jul 11 00:48:29 2013  Zachary Scott  <zachary@zacharyscott.net>
+
+	* lib/delegate.rb: Add example for __setobj__ and __getobj__
+	  [Bug #8615] Patch by Caleb Thompson
+
+Wed Jul 10 23:29:22 2013  Zachary Scott  <zachary@zacharyscott.net>
+
+	* lib/logger.rb: Use :call-seq: for method signature rdoc
+
+Wed Jul 10 23:23:18 2013  Zachary Scott  <zachary@zacharyscott.net>
+
+	* lib/logger.rb (#add): Remove incorrect rdoc for return value
+	  [Bug #8567] Reported by Tim Pease.
+
+Wed Jul 10 23:12:00 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* string.c (rb_str_subpos): make public function.
+
+Wed Jul 10 22:44:19 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c: Add a static assertion for RBIGNUM_EMBED_LEN_MAX.
+
+Wed Jul 10 22:31:25 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* string.c (rb_str_index): cache single byte flag and some
+	  cosmetic changes.
+
+Wed Jul 10 22:03:27 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bary_2comp): Don't use bary_plus_one.
+	  (bary_add_one): Replaced by the implementation of bary_plus_one.
+
+Wed Jul 10 20:48:22 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* bignum.c (sizeof_bdigit_dbl): check sizeof(BDIGIT_DBL).
+
+	* internal.h (STATIC_ASSERT): move from enum.c.
+
+Wed Jul 10 20:08:21 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (SIZEOF_BDIGIT_DBL): Add a ifdef guard for test.
+
+Wed Jul 10 14:18:59 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* process.c (fork_daemon): kill the other threads all and abandon the
+	  kept mutexes.
+
+Wed Jul 10 11:35:36 2013  NAKAMURA Usaku  <usa@ruby-lang.org>
+
+	* test/net/http/test_http.rb (TestNetHTTP_v1_2#test_get,
+	  TestNetHTTP_v1_2_chunked#test_get): shouldn't check
+	  HttpResponse#decode_content if Zlib is not available.
+	  ko1 complained via IRC.
+
+Wed Jul 10 10:20:07 2013  NARUSE, Yui  <naruse@ruby-lang.org>
+
+	* tool/rbinstall.rb: always require rubygems to stabilize rubygems
+	  related status like whether Gem::Specification is defined or not.
+
+	* tool/rbinstall.rb (Gem::Specification.unresolved_deps): define stub.
+
+Wed Jul 10 08:21:15 2013  Eric Hodel  <drbrain@segment7.net>
+
+	* lib/rubygems:  Import RubyGems 2.1
+	* test/rubygems:  Ditto.
+
+Wed Jul 10 07:34:34 2013  Eric Hodel  <drbrain@segment7.net>
+
+	* lib/rubygems/ext/ext_conf_builder.rb:  Remove siteconf file after
+	  building the gem.
+	* test/rubygems/test_gem_ext_ext_conf_builder.rb:  Test for the above.
+
+	* lib/rubygems/psych_tree.rb (module Gem):  Add backward compatibility
+	  for r41148
+
+	* test/rubygems/test_gem_package.rb:  Add backward compatibility for
+	  double-slash elimination.
+
+Wed Jul 10 06:22:27 2013  Tadayoshi Funaba  <tadf@dotrb.org>
+
+	* ext/date/date_parse.c (date_zone_to_diff): [ruby-core:55831].
+
+Wed Jul 10 00:41:42 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bary_mul): x*1 is x.
+
+Tue Jul  9 22:24:39 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bary_mul1): No need to invoke MEMZERO at last.
+	  (bary_mul_single): Invoke MEMZERO here.
+
+Tue Jul  9 21:40:01 2013  Kouhei Sutou  <kou@cozmixng.org>
+
+	* test/rexml/test_text.rb: Add missing tests for Text#<<.
+	  Reported by nagachika. Thanks!!!
+
+Tue Jul  9 18:02:38 2013  Akinori MUSHA  <knu@iDaemons.org>
+
+	* lib/fileutils.rb (FileUtils#chown_R): Do not skip traversal even
+	  if user and group are both nil, to be consistent with #chown and
+	  other commands.
+
+Tue Jul  9 17:58:26 2013  Akinori MUSHA  <knu@iDaemons.org>
+
+	* test/fileutils/test_fileutils.rb
+	  (TestFileUtils#assert_output_lines): New utility assertion
+	  method for testing verbose output.
+
+Tue Jul  9 17:43:57 2013  Koichi Sasada  <ko1@atdot.net>
+
+	* test/test_tracer.rb: catch up recent rubygems changes.
+
+Tue Jul  9 16:58:30 2013  NAKAMURA Usaku  <usa@ruby-lang.org>
+
+	* ext/{dl,fiddle}/win32/lib/win32/registry.rb: hope that the final
+	  resolution to fix the failure of test-all.  and includes Win64
+	  support (fixed a potential bug).
+
+Tue Jul  9 15:57:20 2013  Akinori MUSHA  <knu@iDaemons.org>
+
+	* object.c: Fix rdoc for Kernel#<=>. [Fixes GH-352]
+
+Tue Jul  9 15:53:51 2013  Akinori MUSHA  <knu@iDaemons.org>
+
+	* lib/fileutils.rb (FileUtils#mode_to_s): Define mode_to_s() also
+	  as singleton method, or FileUtils.chmod fails in verbose mode.
+
+Tue Jul  9 15:16:02 2013  Akinori MUSHA  <knu@iDaemons.org>
+
+	* test/fileutils/fileasserts.rb
+	  (Test::Unit::FileAssertions#assert_not_symlink): Add a missing
+	  optional argument "message".
+
+Tue Jul  9 15:03:24 2013  Akinori MUSHA  <knu@iDaemons.org>
+
+	* lib/fileutils.rb (FileUtils#chown, FileUtils#chown_R): If user
+	  and group are both nil, print ":".
+
+Tue Jul  9 12:47:08 2013  Masaki Matsushita  <glass.saga@gmail.com>
+
+	* io.c (appendline): use READ_CHAR_PENDING_XXX macros and
+	  RSTRING_END().
+
+	* io.c (rb_io_getline_1): rewrite nested if statement into one
+	  statement.
+
+Tue Jul  9 11:04:35 2013  NAKAMURA Usaku  <usa@ruby-lang.org>
+
+	* ext/{dl,fiddle}/win32/lib/win32/registry.rb (Win32::Registry#check):
+	  should report the position of the error.
+
+	* ext/{dl,fiddle}/win32/lib/win32/registry.rb
+	  (Win32::Registry#QueryValue): workaround for test-all crash.
+
+Tue Jul  9 10:27:56 2013  NAKAMURA Usaku  <usa@ruby-lang.org>
+
+	* ext/{dl,fiddle}/win32/lib/win32/registry.rb
+	  (Win32::Registry.expand_environ): use suitable encoding for the
+	  string.
+
+	* ext/{dl,fiddle}/win32/lib/win32/registry.rb (Win32::Registry#read):
+	  should return REG_SZ, REG_EXPAND_SZ and REG_MULTI_SZ values with
+	  the expected encoding -- assumed as the same encoding of name.
+
+Tue Jul  9 10:02:45 2013  NAKAMURA Usaku  <usa@ruby-lang.org>
+
+	* ext/{dl,fiddle}/win32/lib/win32/registry.rb
+	  (Win32::Registry::Error#initialize): use suitable encoding for the
+	  string.
+
+Tue Jul  9 09:46:53 2013  NAKAMURA Usaku  <usa@ruby-lang.org>
+
+	* ext/dl/win32/lib/win32/registry.rb (Win32::Registry.expand_environ):
+	  use suitable encoding for the string.  fixed a test-all error of
+	  r41838.
+
+	* ext/fiddle/win32/lib/win32/registry.rb: same changes of r41838 and
+	  this revision of dl's win32/registry.rb.
+
+Tue Jul  9 07:39:45 2013  Eric Hodel  <drbrain@segment7.net>
+
+	* lib/rubygems:  Update to RubyGems 2.0.4.  See
+	  https://github.com/rubygems/rubygems/blob/2.0/History.txt for changes
+
+Tue Jul  9 01:47:16 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (biglsh_bang): Don't shift a BDIGIT with BITSPERDIG bits.
+	  (bigrsh_bang): Ditto.
+
+Tue Jul  9 01:17:57 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bigrsh_bang): Fix bignum digits overrun.
+
+Tue Jul  9 00:46:22 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (biglsh_bang): Fix bignum digits under-run.
+
+Mon Jul  8 23:36:45 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* ext/dl/win32/lib/win32/registry.rb (Error, API): use WCHAR
+	  interfaces.  c.f. [Bug #8508]
+
+Mon Jul  8 23:13:11 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* win32/win32.c (rb_w32_pow): move from win32.h and disable strict
+	  ANSI mode macro to let _controlfp() stuff defined.
+	  [ruby-core:55312] [Bug #8495]
+
+	* numeric.c (finite): add declaration for strict ANSI.
+	  [ruby-core:55312] [Bug #8495]
+
+	* thread_win32.c (w32_thread_start_func, thread_start_func_1),
+	  (timer_thread_func): use __stdcall instead of _stdcall which is
+	  unavailable in strict ANSI mode.  [ruby-core:55312] [Bug #8495]
+
+	* win32/win32.c (gettimeofday): use __cdecl instead of _cdecl.
+
+Mon Jul  8 22:41:12 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bary_mul): Arguments for work memory added.
+	  (bary_mul_balance): Ditto.
+	  (bary_mul_karatsuba): Ditto.
+
+Mon Jul  8 22:03:30 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (rb_big_sq_fast): New function for testing.
+	  (rb_big_mul_toom3): Ditto.
+
+	* internal.h (rb_big_sq_fast): Declared.
+	  (rb_big_mul_toom3): Ditto.
+
+Mon Jul  8 21:59:34 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bary_mul_balance): Initialize a local variable to suppress
+	  a warning.
+
+Mon Jul  8 20:55:22 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bary_mul_balance): Reduce work memory.
+
+Mon Jul  8 08:26:15 2013  Martin Bosslet  <Martin.Bosslet@gmail.com>
+
+	* test/openssl/test_pkey_ec.rb: Skip tests for "Oakley" curves as
+	  they are not suitable for ECDSA.
+	  [ruby-core:54881] [Bug #8384]
+
+Mon Jul  8 08:03:01 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bary_mul): Add a RB_GC_GUARD.
+
+Sun Jul  7 23:56:32 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bary_mul_karatsuba): Unreachable code removed.  Remove
+	  several branches.
+
+Sun Jul  7 22:59:06 2013  Tanaka Akira  <akr@fsij.org>
+
+	* internal.h (rb_big_mul_normal): Declared.
+	  (rb_big_mul_balance): Ditto.
+	  (rb_big_mul_karatsuba): Ditto.
+
+	* bignum.c (rb_big_mul_normal): New function for tests.
+	  (rb_big_mul_balance): Ditto.
+	  (rb_big_mul_karatsuba): Ditto.
+
+Sun Jul  7 19:21:30 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c: Reorder functions to decrease forward reference.
+
+Sun Jul  7 14:41:57 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c: (bigsub_core): Use bary_sub.
+	  (bary_sub): Returns a borrow flag.  Use bary_subb.
+	  (bary_subb): New function for actually calculating subtraction with
+	  borrow.
+	  (bary_sub_one): New function.
+	  (bigadd_core): Use bary_add.
+	  (bary_add): Returns a carry flag.  Use bary_addc.
+	  (bary_addc): New function for actually calculating addition with
+	  carry.
+	  (bary_add_one): New function.
+	  (bary_muladd_1xN): Extracted from bary_mul_normal.
+	  (bigmul1_normal): Removed.
+	  (bary_mul_karatsuba): New function.
+	  (bary_mul1): Invoke rb_thread_check_ints after bary_mul_normal.
+	  (bary_mul): Remove most and least significant zeros before actual
+	  multiplication.  Use bary_sq_fast, bary_mul_balance,
+	  bary_mul_karatsuba and bigmul1_toom3 as bigmul0.
+	  (bigmul1_balance): Removed.
+	  (bigmul1_karatsuba): Removed.
+	  (bigsqr_fast): Removed.
+	  (bary_sparse_p): Extracted from big_sparse_p.
+	  (big_sparse_p): Removed.
+	  (bigmul0): Use bary_mul.
+
+Sun Jul  7 11:54:33 2013  Kouhei Sutou  <kou@cozmixng.org>
+
+	* NEWS: Add REXML::Text#<< related updates.
+
+Sun Jul  7 11:49:19 2013  Kouhei Sutou  <kou@cozmixng.org>
+
+	* lib/rexml/text.rb (REXML::Text#<<): Support appending in not
+	  "raw" mode. [Bug #8602] [ruby-dev:47482]
+	  Reported by Ippei Obayashi. Thanks!!!
+
+Sun Jul  7 11:43:13 2013  Kouhei Sutou  <kou@cozmixng.org>
+
+	* lib/rexml/text.rb (REXML::Text#<<): Support method chain use by "<<"
+	  like other objects.
+
+Sun Jul  7 11:34:18 2013  Kouhei Sutou  <kou@cozmixng.org>
+
+	* lib/rexml/text.rb (REXML::Text#clear_cache): Extract common
+	  cache clear code.
+
+Sun Jul  7 11:01:03 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* configure.in (RUBY_DTRACE_POSTPROCESS): dtrace version SUN D 1.11
+	  introduces a check in the dtrace compiler to ensure that probes
+	  actually exist. If there are no probes, then the -G step will
+	  fail. As this test is only being used to determine whether -G is
+	  necessary (for instance, on OSX it is not), adding a real probe to
+	  the conftest allows it to succeed on newer versions of dtrace.
+	  Patch by Eric Saxby <sax AT livinginthepast.org> at
+	  [ruby-core:55826].  [Fixes GH-351], [Bug #8606].
+
+Sun Jul  7 10:07:22 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bary_sq_fast): Extracted from bigsqr_fast and
+	  ensure not to access zds[2*xn].
+	  (bigsqr_fast): Allocate the result bignum with 2*xn words.
+
+Sat Jul  6 07:37:43 2013  Martin Bosslet  <Martin.Bosslet@gmail.com>
+
+	* ext/openssl/ossl_pkey_ec.c: Ensure compatibility to builds of
+	  OpenSSL with OPENSSL_NO_EC2M defined, but OPENSSL_NO_EC not
+	  defined.
+	* test/openssl/test_pkey_ec.rb: Iterate over built-in curves
+	  (and assert their non-emptiness!) instead of hard-coding them, as
+	  this may cause problems with respect to the different availability
+	  of individual curves in individual OpenSSL builds.
+	  [ruby-core:54881] [Bug #8384]
+
+	  Thanks to Vit Ondruch for providing the patch!
+
+Sat Jul  6 07:12:39 2013  Martin Bosslet  <Martin.Bosslet@gmail.com>
+
+	* test/openssl/test_x509crl.rb: Remove unused variable.
+	  [ruby-core:53501] [Bug #8114]
+
+	  Thanks, Vipul Amler, for pointing this out!
+
+Sat Jul  6 06:37:10 2013  Martin Bosslet  <Martin.Bosslet@gmail.com>
+
+	* ext/openssl/ossl.c: Provide CRYPTO_set_locking_callback() and
+	  CRYPTO_set_id_callback() callback functions ossl_thread_id and
+	  ossl_lock_callback to ensure the OpenSSL extension is usable in
+	  multi-threaded environments.
+	  [ruby-core:54900] [Bug #8386]
+
+	  Thanks, Dirkjan Bussink, for the patch!
+
+Sat Jul  6 06:06:16 2013  Martin Bosslet  <Martin.Bosslet@gmail.com>
+
+	* lib/openssl/ssl.rb: Fix SSL client connection crash for SAN marked
+	  critical.
+	  The patch for CVE-2013-4073 caused SSL crash when a SSL server returns
+	  the certificate that has critical SAN value.  X509 extension could
+	  include 2 or 3 elements in it:
+
+	  [id, criticality, octet_string] if critical,
+	  [id, octet_string] if not.
+
+	  Making sure to pick the last element of X509 extension and use it as
+	  SAN value.
+	  [ruby-core:55685] [Bug #8575]
+
+	  Thank you @nahi for providing the patch!
+
+Sat Jul  6 04:49:38 2013  Aaron Patterson <aaron@tenderlovemaking.com>
+
+	* ext/psych/lib/psych/visitors/yaml_tree.rb: register time objects so
+	  they are referenced as ids during output.
+	* test/psych/test_date_time.rb: corresponding test.
+
+Fri Jul  5 20:46:39 2013  NAKAMURA Usaku  <usa@ruby-lang.org>
+
+	* test/ruby/test_unicode_escape.rb (TestUnicodeEscape#test_basic): this
+	  assertion doesn't seems to be checking the unicode string on command
+	  line, but seems to be checking how to treat the unicode string from
+	  stdin.  so, should escape '\' before 'u'.  this fixes a test failure
+	  on Windows.
+
+Fri Jul  5 19:05:40 2013  Akinori MUSHA  <knu@iDaemons.org>
+
+	* lib/fileutils.rb (FileUtils#chown, FileUtils#chown_R): Fix the
+	  wrong output message when user is nil, which should be "chown
+	  :group file" instead of "chown group file".
+
+Fri Jul  5 16:21:56 2013  Akinori MUSHA  <knu@iDaemons.org>
+
+	* test/ruby/test_regexp.rb
+	  (TestRegexp#test_options_in_look_behind)
+	  (TestRegexp#assert_match_at): Add tests for another problem
+	  fixed in Onigmo 5.13.5.  Previously Onigmo did not allow option
+	  enclosures in look-behind, which makes it impossible to
+	  interpolate a regexp into another in the middle of a look-behind
+	  pattern.  cf. https://github.com/k-takata/Onigmo/pull/17
+
+	* test/ruby/test_regexp.rb
+	  (TestRegexp#test_options_in_look_behind)
+	  (TestRegexp#assert_match_at): Parse regexps in run time rather
+	  than in compile time.
+
+Fri Jul  5 12:14:40 2013  NAKAMURA Usaku  <usa@ruby-lang.org>
+
+	* test/ruby/test_rubyoptions.rb (TestRubyOptions#test_notfound): after
+	  r41710, the path of command uses backslash as the separator on
+	  Windows.
+
+Fri Jul  5 11:29:47 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* lib/test/unit/assertions.rb (assert_raise_with_message): move from
+	  test/fileutils/test_fileutils.rb.  this is still experimental and
+	  the interface may be changed.
+
+Fri Jul  5 11:08:00 2013  NAKAMURA Usaku  <usa@ruby-lang.org>
+
+	* win32/win32.c (w32_spawn): r41710 made that if the command starts with
+	  a quote and includes slash, removed the top quote and NOT removed the
+	  last quote.
+	  this fixes test failures on test/ruby/test_process.rb and
+	  test/webrick.
+
+Fri Jul  5 09:53:15 2013  NARUSE, Yui  <naruse@ruby-lang.org>
+	* lib/mkmf.rb (CONFIG['CPPOUTFILE']): fix r41769; CONFIG['CPPOUTFILE']
+	  may be nil.
+
+Fri Jul  5 05:39:53 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (BARY_MUL1): Renamed from BARY_MUL.
+	  (bary_mul1): Renamed from bary_mul.
+	  (bary_mul): Renamed from bary_mul2.
+
+Fri Jul  5 04:58:05 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (bary_mul_balance): Extracted from bigmul1_balance and
+	  use bary_mul2 and bary_add to decrease allocations.
+
+Fri Jul  5 02:14:00 2013  Akinori MUSHA  <knu@iDaemons.org>
+
+	* lib/fileutils.rb (FileUtils#symbolic_modes_to_i): Fix the wrong
+	  character class [+-=], which happened to match all desired
+	  characters but also match undesired characters.
+
+	* lib/fileutils.rb (FileUtils.chmod{,_R}): Enhance the symbolic
+	  mode parser to support the permission symbols u/g/o and multiple
+	  actions as defined in SUS, so that chmod("g=o+w", file) works as
+	  expected.  Invalid symbolic modes are now rejected with
+	  ArgumentError.
+
+Fri Jul  5 00:25:39 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
+
+	* lib/mkmf.rb (have_framework): allow header file to check.
+	  [ruby-core:55745] [Bug #8593]
+
+Thu Jul  4 22:31:00 2013  Charlie Somerville  <charliesome@ruby-lang.org>
+
+	* object.c (rb_obj_equal): Fixed an rb_obj_equal documentation typo
+	  where "a" was used instead of "obj".
+	  Fixes GH-349. Patch by @adnandoric
+
+Thu Jul  4 20:39:20 2013  Tanaka Akira  <akr@fsij.org>
+
+	* tool/make-snapshot: Exit with EXIT_FAILURE when it fails.
+
+Thu Jul  4 20:20:23 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (maxpow_in_bdigit_dbl): Use tables if available.
+	  (maxpow_in_bdigit): Ditto.
+	  (U16): New macro.
+	  (U32): Ditto.
+	  (U64): Ditto.
+	  (U128): Ditto.
+	  (maxpow16_exp): New table.
+	  (maxpow16_num): New table.
+	  (maxpow32_exp): New table.
+	  (maxpow32_num): New table.
+	  (maxpow64_exp): New table.
+	  (maxpow64_num): New table.
+	  (maxpow128_exp): New table.
+	  (maxpow128_num): New table.
+
+Thu Jul  4 18:25:25 2013  Tanaka Akira  <akr@fsij.org>
+
+	* bignum.c (rb_cstr_to_inum): Avoid temporary buffer allocation except
+	  very big base non-power-of-2 numbers.
+
+Thu Jul  4 15:51:56 2013  NARUSE, Yui  <naruse@ruby-lang.org>
+
+	* string.c (rb_str_succ): use ONIGENC_MBCLEN_CHARFOUND_P correctly.
+
+	* string.c (rb_str_dump): ditto.
+
+Thu Jul  4 10:04:11 2013  NARUSE, Yui  <naruse@ruby-lang.org>
+
+	* regcomp.c (): Merge Onigmo 5.13.5 23b523076d6f1161.
+
+	  * [bug]  (thanks Akinori MUSHA and Ippei Obayashi)
+	           Fix a renumbering bug in condition regexp with a named
+	           capture. [Bug #8583]
+	  * [spec] (thanks Akinori MUSHA)
+	    Allow ENCLOSE_OPTION in look-behind.
+
 Thu Jul  4 00:36:03 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
 
-	* internal.h (SIGNED_INTEGER_MAX): supperss warning C4146 on VC6.
+	* internal.h (SIGNED_INTEGER_MAX): suppress warning C4146 on VC6.
 	  seems a logical ORed expression becomes unsigned.
 
 Thu Jul  4 00:13:01 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
@@ -415,7 +2658,7 @@ Tue Jun 25 21:26:00 2013  Kenta Murata  <mrkn@mrkn.jp>
 	  the argument x is not a BigDecimal.
 	  This change is based on the patch made by Heesob Park and Garth Snyder.
 	  [Bug #6862] [ruby-core:47145]
-	  [Fix GH-332] https://github.com/ruby/ruby/pull/332
+	  [Fixes GH-332] https://github.com/ruby/ruby/pull/332
 
 Tue Jun 25 20:36:31 2013  Tanaka Akira  <akr@fsij.org>
 
@@ -572,16 +2815,16 @@ Mon Jun 24 07:57:18 2013  Masaya Tarui  <tarui@ruby-lang.org>
 Mon Jun 24 02:53:09 2013  Zachary Scott  <zachary@zacharyscott.net>
 
 	* array.c: Return value in Array overview example found by @PragTob
-	  [Fix GH-336] https://github.com/ruby/ruby/pull/336
+	  [Fixes GH-336] https://github.com/ruby/ruby/pull/336
 
 Mon Jun 24 02:45:51 2013  Zachary Scott  <zachary@zacharyscott.net>
 
-	* array.c (rb_ary_zip): typo by @PragTob [Fix GH-337]
+	* array.c (rb_ary_zip): typo by @PragTob [Fixes GH-337]
 	  https://github.com/ruby/ruby/pull/337
 
 Mon Jun 24 02:42:01 2013  Zachary Scott  <zachary@zacharyscott.net>
 
-	* win32/README.win32: grammar typo by @blankenshipz [Fix GH-334]
+	* win32/README.win32: grammar typo by @blankenshipz [Fixes GH-334]
 	  https://github.com/ruby/ruby/pull/334
 
 Mon Jun 24 00:59:35 2013  Tanaka Akira  <akr@fsij.org>
@@ -2933,11 +5176,11 @@ Fri May 31 16:35:44 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
 
 Fri May 31 16:03:23 2013  Zachary Scott  <zachary@zacharyscott.net>
 
-	* object.c, proc.c: s/call_seq/call-seq in rdoc. [Fix GH-322]
+	* object.c, proc.c: s/call_seq/call-seq in rdoc. [Fixes GH-322]
 
 Fri May 31 15:56:36 2013  Zachary Scott  <zachary@zacharyscott.net>
 
-	* ext/openssl/ossl_ssl.c: Add missing paren in rdoc [Fix GH-321]
+	* ext/openssl/ossl_ssl.c: Add missing paren in rdoc [Fixes GH-321]
 
 Fri May 31 11:58:24 2013  Nobuyoshi Nakada  <nobu@ruby-lang.org>
 

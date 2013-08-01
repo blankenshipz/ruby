@@ -19,6 +19,8 @@
   Copyright (C) 2000  Information-technology Promotion Agency, Japan
  */
 
+#undef __STRICT_ANSI__
+
 #include "ruby/ruby.h"
 #include "ruby/encoding.h"
 #include <fcntl.h>
@@ -47,6 +49,10 @@
 #include "ruby/win32.h"
 #include "win32/dir.h"
 #define isdirsep(x) ((x) == '/' || (x) == '\\')
+
+#if defined _MSC_VER && _MSC_VER <= 1200
+# define CharNextExA(cp, p, flags) CharNextExA((WORD)(cp), (p), (flags))
+#endif
 
 static int w32_stati64(const char *path, struct stati64 *st, UINT cp);
 static char *w32_getenv(const char *name, UINT cp);
@@ -1260,12 +1266,7 @@ w32_spawn(int mode, const char *cmd, const char *prog, UINT cp)
 		}
 		if ((unsigned char)*prog == quote) {
 		    len = prog++ - cmd - 1;
-		    STRNDUPV(p, v2, cmd + 1 - slash, len + (slash ? strlen(prog) + 2 : 0));
-		    if (slash) {
-			cmd = p++;
-			sep = *(cmd_sep = &p[len + 1]);
-			*cmd_sep = '\0';
-		    }
+		    STRNDUPV(p, v2, cmd + 1, len);
 		    shell = p;
 		    break;
 		}
@@ -4279,7 +4280,7 @@ filetime_to_timeval(const FILETIME* ft, struct timeval *tv)
 }
 
 /* License: Ruby's */
-int _cdecl
+int __cdecl
 gettimeofday(struct timeval *tv, struct timezone *tz)
 {
     FILETIME ft;
@@ -5653,8 +5654,14 @@ int
 rb_w32_pipe(int fds[2])
 {
     static DWORD serial = 0;
-    char name[] = "\\\\.\\pipe\\ruby0000000000000000-0000000000000000";
-    char *p;
+    static const char prefix[] = "\\\\.\\pipe\\ruby";
+    enum {
+	width_of_prefix = (int)sizeof(prefix) - 1,
+	width_of_pid = (int)sizeof(rb_pid_t) * 2,
+	width_of_serial = (int)sizeof(serial) * 2,
+	width_of_ids = width_of_pid + 1 + width_of_serial + 1
+    };
+    char name[sizeof(prefix) + width_of_ids];
     SECURITY_ATTRIBUTES sec;
     HANDLE hRead, hWrite, h;
     int fdRead, fdWrite;
@@ -5664,8 +5671,9 @@ rb_w32_pipe(int fds[2])
     if (!cancel_io)
 	return _pipe(fds, 65536L, _O_NOINHERIT);
 
-    p = strchr(name, '0');
-    snprintf(p, strlen(p) + 1, "%"PRI_PIDT_PREFIX"x-%lx", rb_w32_getpid(), serial++);
+    memcpy(name, prefix, width_of_prefix);
+    snprintf(name + width_of_prefix, width_of_ids, "%.*"PRI_PIDT_PREFIX"x-%.*lx",
+	     width_of_pid, rb_w32_getpid(), width_of_serial, serial++);
 
     sec.nLength = sizeof(sec);
     sec.lpSecurityDescriptor = NULL;
@@ -6959,3 +6967,22 @@ rb_w32_unwrap_io_handle(int fd)
     }
     return _close(fd);
 }
+
+#if !defined(__MINGW64__) && defined(__MINGW64_VERSION_MAJOR)
+/*
+ * Set floating point precision for pow() of mingw-w64 x86.
+ * With default precision the result is not proper on WinXP.
+ */
+double
+rb_w32_pow(double x, double y)
+{
+#undef pow
+    double r;
+    unsigned int default_control = _controlfp(0, 0);
+    _controlfp(_PC_64, _MCW_PC);
+    r = pow(x, y);
+    /* Restore setting */
+    _controlfp(default_control, _MCW_PC);
+    return r;
+}
+#endif

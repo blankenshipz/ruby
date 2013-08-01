@@ -567,14 +567,19 @@ void rb_secure(int);
 int rb_safe_level(void);
 void rb_set_safe_level(int);
 #if defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 4))
-int ruby$safe_level$4(void) __attribute__((error("$SAFE=4 is obsolete")));
+int ruby_safe_level_4_error(void) __attribute__((error("$SAFE=4 is obsolete")));
+# ifdef RUBY_EXPORT
+#   define ruby_safe_level_4_warning() ruby_safe_level_4_error()
+# else
+int ruby_safe_level_4_warning(void) __attribute__((warning("$SAFE=4 is obsolete")));
+# endif
 #define RUBY_SAFE_LEVEL_INVALID_P(level) \
     __extension__(__builtin_constant_p(level) && \
 		  ((level) < 0 || RUBY_SAFE_LEVEL_MAX < (level)))
-#define RUBY_SAFE_LEVEL_CHECK(level) \
-    (RUBY_SAFE_LEVEL_INVALID_P(level) ? ruby$safe_level$4() : (level))
-#define rb_secure(level) rb_secure(RUBY_SAFE_LEVEL_CHECK(level))
-#define rb_set_safe_level(level) rb_set_safe_level(RUBY_SAFE_LEVEL_CHECK(level))
+#define RUBY_SAFE_LEVEL_CHECK(level, type) \
+    (RUBY_SAFE_LEVEL_INVALID_P(level) ? ruby_safe_level_4_##type() : (level))
+#define rb_secure(level) rb_secure(RUBY_SAFE_LEVEL_CHECK(level, warning))
+#define rb_set_safe_level(level) rb_set_safe_level(RUBY_SAFE_LEVEL_CHECK(level, error))
 #endif
 void rb_set_safe_level_force(int);
 void rb_secure_update(VALUE);
@@ -1261,11 +1266,16 @@ void rb_gc_writebarrier_unprotect_promoted(VALUE obj);
 #define OBJ_WRITE(a, slot, b)       rb_obj_write((VALUE)(a), (VALUE *)(slot), (VALUE)(b), __FILE__, __LINE__)
 #define OBJ_WRITTEN(a, oldv, b)     rb_obj_written((VALUE)(a), (VALUE)(oldv), (VALUE)(b), __FILE__, __LINE__)
 
+#if defined(USE_RGENGC_LOGGING_WB_UNPROTECT) && USE_RGENGC_LOGGING_WB_UNPROTECT
+void rb_gc_unprotect_logging(void *objptr, const char *filename, int line);
+#define RGENGC_LOGGING_WB_UNPROTECT rb_gc_unprotect_logging
+#endif
+
 static inline VALUE
 rb_obj_wb_unprotect(VALUE x, const char *filename, int line)
 {
 #ifdef RGENGC_LOGGING_WB_UNPROTECT
-    RGENGC_LOGGING_WB_UNPROTECT(x, filename, line);
+    RGENGC_LOGGING_WB_UNPROTECT((void *)x, filename, line);
 #endif
 
 #if USE_RGENGC
@@ -1302,8 +1312,8 @@ rb_obj_written(VALUE a, VALUE oldv, VALUE b, const char *filename, int line)
 static inline VALUE
 rb_obj_write(VALUE a, VALUE *slot, VALUE b, const char *filename, int line)
 {
-#ifdef RGENGC_LOGGING_WRIET
-    RGENGC_LOGGING_WRIET(a, slot, b, filename, line);
+#ifdef RGENGC_LOGGING_WRITE
+    RGENGC_LOGGING_WRITE(a, slot, b, filename, line);
 #endif
 
     *slot = b;
@@ -1808,10 +1818,10 @@ int rb_toupper(int c);
 #define TOUPPER(c) rb_toupper((unsigned char)(c))
 #define TOLOWER(c) rb_tolower((unsigned char)(c))
 
-int st_strcasecmp(const char *s1, const char *s2);
-int st_strncasecmp(const char *s1, const char *s2, size_t n);
-#define STRCASECMP(s1, s2) (st_strcasecmp((s1), (s2)))
-#define STRNCASECMP(s1, s2, n) (st_strncasecmp((s1), (s2), (n)))
+int st_locale_insensitive_strcasecmp(const char *s1, const char *s2);
+int st_locale_insensitive_strncasecmp(const char *s1, const char *s2, size_t n);
+#define STRCASECMP(s1, s2) (st_locale_insensitive_strcasecmp((s1), (s2)))
+#define STRNCASECMP(s1, s2, n) (st_locale_insensitive_strncasecmp((s1), (s2), (n)))
 
 unsigned long ruby_strtoul(const char *str, char **endptr, int base);
 #define STRTOUL(str, endptr, base) (ruby_strtoul((str), (endptr), (base)))

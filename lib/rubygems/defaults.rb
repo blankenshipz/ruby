@@ -15,6 +15,14 @@ module Gem
   end
 
   ##
+  # Default spec directory path to be used if an alternate value is not
+  # specified in the environment
+
+  def self.default_spec_cache_dir
+    File.join Gem.user_home, '.gem', 'specs'
+  end
+
+  ##
   # Default home directory path to be used if an alternate value is not
   # specified in the environment
 
@@ -54,7 +62,9 @@ module Gem
   # Path for gems in the user's home directory
 
   def self.user_dir
-    File.join Gem.user_home, '.gem', ruby_engine, ConfigMap[:ruby_version]
+    parts = [Gem.user_home, '.gem', ruby_engine]
+    parts << ConfigMap[:ruby_version] unless ConfigMap[:ruby_version].empty?
+    File.join parts
   end
 
   ##
