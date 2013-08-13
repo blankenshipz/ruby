@@ -211,6 +211,7 @@ Doxyfile: $(srcdir)/template/Doxyfile.tmpl $(PREP) $(srcdir)/tool/generic_erb.rb
 
 program: showflags $(PROGRAM)
 wprogram: showflags $(WPROGRAM)
+mini: PHONY miniruby$(EXEEXT)
 
 $(PROGRAM) $(WPROGRAM): $(LIBRUBY) $(MAINOBJ) $(OBJS) $(EXTOBJS) $(SETUP) $(PREP)
 
@@ -263,7 +264,7 @@ post-install-ext:: post-install-ext-arch post-install-ext-comm
 install-arch: pre-install-arch do-install-arch post-install-arch
 pre-install-arch:: pre-install-bin pre-install-ext-arch
 do-install-arch: main
-	$(INSTRUBY) --make="$(MAKE)" $(INSTRUBY_ARGS) --install=bin --install=ext-arch
+	$(INSTRUBY) --make="$(MAKE)" $(INSTRUBY_ARGS) --install=arch
 post-install-arch:: post-install-bin post-install-ext-arch
 
 install-comm: pre-install-comm do-install-comm post-install-comm
@@ -836,7 +837,7 @@ utf_8.$(OBJEXT): {$(VPATH)}utf_8.c {$(VPATH)}regenc.h {$(VPATH)}config.h \
   {$(VPATH)}oniguruma.h {$(VPATH)}missing.h $(RUBY_H_INCLUDES)
 
 win32/win32.$(OBJEXT): {$(VPATH)}win32/win32.c {$(VPATH)}dln.h {$(VPATH)}dln_find.c \
-  $(RUBY_H_INCLUDES) $(PLATFORM_D)
+  {$(VPATH)}internal.h $(RUBY_H_INCLUDES) $(PLATFORM_D)
 win32/file.$(OBJEXT): {$(VPATH)}win32/file.c $(RUBY_H_INCLUDES) $(PLATFORM_D)
 
 $(NEWLINE_C): $(srcdir)/enc/trans/newline.trans $(srcdir)/tool/transcode-tblgen.rb
@@ -984,6 +985,12 @@ runruby: $(PROGRAM) PHONY
 
 parse: fake miniruby$(EXEEXT) PHONY
 	$(BTESTRUBY) $(srcdir)/tool/parse.rb $(TESTRUN_SCRIPT)
+
+bisect: PHONY
+	$(srcdir)/tool/bisect.sh miniruby $(srcdir)
+
+bisect-ruby: PHONY
+	$(srcdir)/tool/bisect.sh ruby $(srcdir)
 
 COMPARE_RUBY = $(BASERUBY)
 ITEM =

@@ -1817,7 +1817,7 @@ get_timeval(VALUE obj)
     struct time_object *tobj;
     TypedData_Get_Struct(obj, struct time_object, &time_data_type, tobj);
     if (!TIME_INIT_P(tobj)) {
-	rb_raise(rb_eTypeError, "uninitialized %"PRIsVALUE, CLASS_OF(obj));
+	rb_raise(rb_eTypeError, "uninitialized %"PRIsVALUE, rb_obj_class(obj));
     }
     return tobj;
 }
@@ -1828,7 +1828,7 @@ get_new_timeval(VALUE obj)
     struct time_object *tobj;
     TypedData_Get_Struct(obj, struct time_object, &time_data_type, tobj);
     if (TIME_INIT_P(tobj)) {
-	rb_raise(rb_eTypeError, "already initialized %"PRIsVALUE, CLASS_OF(obj));
+	rb_raise(rb_eTypeError, "already initialized %"PRIsVALUE, rb_obj_class(obj));
     }
     return tobj;
 }
@@ -2217,24 +2217,25 @@ time_init(int argc, VALUE *argv, VALUE time)
 static void
 time_overflow_p(time_t *secp, long *nsecp)
 {
-    time_t tmp, sec = *secp;
+    time_t sec = *secp;
     long nsec = *nsecp;
+    long sec2;
 
     if (nsec >= 1000000000) {	/* nsec positive overflow */
-	tmp = sec + nsec / 1000000000;
-	nsec %= 1000000000;
-	if (sec > 0 && tmp < 0) {
+        sec2 = nsec / 1000000000;
+	if (TIMET_MAX - sec2 < sec) {
 	    rb_raise(rb_eRangeError, "out of Time range");
 	}
-	sec = tmp;
+	nsec -= sec2 * 1000000000;
+	sec += sec2;
     }
-    if (nsec < 0) {		/* nsec negative overflow */
-	tmp = sec + NDIV(nsec,1000000000); /* negative div */
-	nsec = NMOD(nsec,1000000000);      /* negative mod */
-	if (sec < 0 && tmp > 0) {
+    else if (nsec < 0) {		/* nsec negative overflow */
+	sec2 = NDIV(nsec,1000000000); /* negative div */
+	if (sec < TIMET_MIN - sec2) {
 	    rb_raise(rb_eRangeError, "out of Time range");
 	}
-	sec = tmp;
+	nsec -= sec2 * 1000000000;
+	sec += sec2;
     }
 #ifndef NEGATIVE_TIME_T
     if (sec < 0)
@@ -2280,9 +2281,9 @@ rb_time_new(time_t sec, long usec)
 	usec -= sec2 * 1000000;
 	sec += sec2;
     }
-    else if (usec <= 1000000) {
-	long sec2 = usec / 1000000;
-	if (sec < -TIMET_MAX - sec2) {
+    else if (usec < 0) {
+	long sec2 = NDIV(usec,1000000); /* negative div */
+	if (sec < TIMET_MIN - sec2) {
 	    rb_raise(rb_eRangeError, "out of Time range");
 	}
 	usec -= sec2 * 1000000;
@@ -4839,7 +4840,7 @@ time_load(VALUE klass, VALUE str)
  *    Time.new(2002)         #=> 2002-01-01 00:00:00 -0500
  *    Time.new(2002, 10)     #=> 2002-10-01 00:00:00 -0500
  *    Time.new(2002, 10, 31) #=> 2002-10-31 00:00:00 -0500
- *    Time.new(2002, 10, 31, 2, 2, 2, "+02:00") #=> 2002-10-31 02:02:02 -0200
+ *    Time.new(2002, 10, 31, 2, 2, 2, "+02:00") #=> 2002-10-31 02:02:02 +0200
  *
  *  You can also use #gm, #local and
  *  #utc to infer GMT, local and UTC timezones instead of using

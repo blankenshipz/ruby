@@ -48,6 +48,7 @@
 #endif
 #include "ruby/win32.h"
 #include "win32/dir.h"
+#include "internal.h"
 #define isdirsep(x) ((x) == '/' || (x) == '\\')
 
 #if defined _MSC_VER && _MSC_VER <= 1200
@@ -466,8 +467,6 @@ get_system_directory(WCHAR *path, UINT len)
     return GetWindowsDirectoryW(path, len);
 }
 
-#define numberof(array) (sizeof(array) / sizeof(*array))
-
 /* License: Ruby's */
 VALUE
 rb_w32_special_folder(int type)
@@ -491,9 +490,9 @@ rb_w32_system_tmpdir(WCHAR *path, UINT len)
     }
     p = translate_wchar(path, L'\\', L'/');
     if (*(p - 1) != L'/') *p++ = L'/';
-    if (p - path + numberof(temp) >= len) return 0;
+    if ((UINT)(p - path + numberof(temp)) >= len) return 0;
     memcpy(p, temp, sizeof(temp));
-    return p - path + numberof(temp) - 1;
+    return (UINT)(p - path + numberof(temp) - 1);
 }
 
 /* License: Ruby's */
@@ -1954,10 +1953,14 @@ static char *
 wstr_to_mbstr(UINT cp, const WCHAR *wstr, int clen, long *plen)
 {
     char *ptr;
-    int len = WideCharToMultiByte(cp, 0, wstr, clen, NULL, 0, NULL, NULL) - 1;
-    if (!(ptr = malloc(len + 1))) return 0;
-    WideCharToMultiByte(cp, 0, wstr, clen, ptr, len + 1, NULL, NULL);
-    if (plen) *plen = len;
+    int len = WideCharToMultiByte(cp, 0, wstr, clen, NULL, 0, NULL, NULL);
+    if (!(ptr = malloc(len))) return 0;
+    WideCharToMultiByte(cp, 0, wstr, clen, ptr, len, NULL, NULL);
+    if (plen) {
+	/* exclude NUL only if NUL-terminated string */
+	if (clen == -1) --len;
+	*plen = len;
+    }
     return ptr;
 }
 
@@ -1966,10 +1969,14 @@ static WCHAR *
 mbstr_to_wstr(UINT cp, const char *str, int clen, long *plen)
 {
     WCHAR *ptr;
-    int len = MultiByteToWideChar(cp, 0, str, clen, NULL, 0) - 1;
-    if (!(ptr = malloc(sizeof(WCHAR) * (len + 1)))) return 0;
-    MultiByteToWideChar(cp, 0, str, clen, ptr, len + 1);
-    if (plen) *plen = len;
+    int len = MultiByteToWideChar(cp, 0, str, clen, NULL, 0);
+    if (!(ptr = malloc(sizeof(WCHAR) * len))) return 0;
+    MultiByteToWideChar(cp, 0, str, clen, ptr, len);
+    if (plen) {
+	/* exclude NUL only if NUL-terminated string */
+	if (clen == -1) --len;
+	*plen = len;
+    }
     return ptr;
 }
 
@@ -2033,20 +2040,31 @@ win32_direct_conv(const WCHAR *file, struct direct *entry, rb_encoding *dummy)
 VALUE
 rb_w32_conv_from_wchar(const WCHAR *wstr, rb_encoding *enc)
 {
-    static rb_encoding *utf16 = (rb_encoding *)-1;
     VALUE src;
+    long len = lstrlenW(wstr);
+    int encindex = ENC_TO_ENCINDEX(enc);
 
-    if (utf16 == (rb_encoding *)-1) {
-	utf16 = rb_enc_find("UTF-16LE");
-	if (utf16 == rb_ascii8bit_encoding())
-	    utf16 = NULL;
+    if (encindex == ENCINDEX_UTF_16LE) {
+	return rb_enc_str_new((char *)wstr, len * sizeof(WCHAR), enc);
     }
-    if (!utf16)
-	/* maybe miniruby */
-	return Qnil;
-
-    src = rb_enc_str_new((char *)wstr, lstrlenW(wstr) * sizeof(WCHAR), utf16);
-    return rb_str_encode(src, rb_enc_from_encoding(enc), ECONV_UNDEF_REPLACE, Qnil);
+    else {
+#if SIZEOF_INT < SIZEOF_LONG
+# error long should equal to int on Windows
+#endif
+	int clen = rb_long2int(len);
+	len = WideCharToMultiByte(CP_UTF8, 0, wstr, clen, NULL, 0, NULL, NULL);
+	src = rb_enc_str_new(0, len, rb_enc_from_index(ENCINDEX_UTF_8));
+	WideCharToMultiByte(CP_UTF8, 0, wstr, clen, RSTRING_PTR(src), len, NULL, NULL);
+    }
+    switch (encindex) {
+      case ENCINDEX_ASCII:
+      case ENCINDEX_US_ASCII:
+	/* assume UTF-8 */
+      case ENCINDEX_UTF_8:
+	/* do nothing */
+	return src;
+    }
+    return rb_str_conv_enc_opts(src, NULL, enc, ECONV_UNDEF_REPLACE, Qnil);
 }
 
 /* License: Ruby's */
@@ -6389,34 +6407,51 @@ rb_w32_write_console(uintptr_t strarg, int fd)
     HANDLE handle;
     DWORD dwMode, reslen;
     VALUE str = strarg;
-    rb_encoding *utf16 = rb_enc_find("UTF-16LE");
+    int encindex;
+    WCHAR *wbuffer = 0;
     const WCHAR *ptr, *next;
     struct constat *s;
     long len;
 
     if (disable) return -1L;
     handle = (HANDLE)_osfhnd(fd);
-    if (!GetConsoleMode(handle, &dwMode) ||
-	!rb_econv_has_convpath_p(rb_enc_name(rb_enc_get(str)), "UTF-16LE"))
+    if (!GetConsoleMode(handle, &dwMode))
 	return -1L;
 
-    str = rb_str_encode(str, rb_enc_from_encoding(utf16),
-			ECONV_INVALID_REPLACE|ECONV_UNDEF_REPLACE, Qnil);
-    ptr = (const WCHAR *)RSTRING_PTR(str);
-    len = RSTRING_LEN(str) / sizeof(WCHAR);
     s = constat_handle(handle);
+    encindex = ENCODING_GET(str);
+    switch (encindex) {
+      default:
+	if (!rb_econv_has_convpath_p(rb_enc_name(rb_enc_from_index(encindex)), "UTF-8"))
+	    return -1L;
+	str = rb_str_conv_enc_opts(str, NULL, rb_enc_from_index(ENCINDEX_UTF_8),
+				   ECONV_INVALID_REPLACE|ECONV_UNDEF_REPLACE, Qnil);
+	/* fall through */
+      case ENCINDEX_US_ASCII:
+      case ENCINDEX_ASCII:
+	/* assume UTF-8 */
+      case ENCINDEX_UTF_8:
+	ptr = wbuffer = mbstr_to_wstr(CP_UTF8, RSTRING_PTR(str), RSTRING_LEN(str), &len);
+	break;
+      case ENCINDEX_UTF_16LE:
+	ptr = (const WCHAR *)RSTRING_PTR(str);
+	len = RSTRING_LEN(str) / sizeof(WCHAR);
+	break;
+    }
     while (len > 0) {
 	long curlen = constat_parse(handle, s, (next = ptr, &next), &len);
 	if (curlen > 0) {
 	    if (!WriteConsoleW(handle, ptr, curlen, &reslen, NULL)) {
 		if (GetLastError() == ERROR_CALL_NOT_IMPLEMENTED)
 		    disable = TRUE;
-		return -1L;
+		reslen = (DWORD)-1L;
+		break;
 	    }
 	}
 	ptr = next;
     }
     RB_GC_GUARD(str);
+    if (wbuffer) free(wbuffer);
     return (long)reslen;
 }
 

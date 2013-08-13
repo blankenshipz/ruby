@@ -1309,7 +1309,7 @@ rb_str_format_m(VALUE str, VALUE arg)
     volatile VALUE tmp = rb_check_array_type(arg);
 
     if (!NIL_P(tmp)) {
-	return rb_str_format(RARRAY_LENINT(tmp), RARRAY_PTR(tmp), str);
+	return rb_str_format(RARRAY_LENINT(tmp), RARRAY_RAWPTR(tmp), str);
     }
     return rb_str_format(1, &arg, str);
 }
@@ -2400,9 +2400,14 @@ str_eql(const VALUE str1, const VALUE str2)
  *     str == obj    -> true or false
  *     str === obj   -> true or false
  *
- *  Equality---If <i>obj</i> is not a <code>String</code>, returns
- *  <code>false</code>. Otherwise, returns <code>true</code> if <i>str</i>
- *  <code><=></code> <i>obj</i> returns zero.
+ *  === Equality
+ *
+ *  Returns whether +str+ == +obj+, similar to Object#==.
+ *
+ *  If +obj+ is not an instance of String but responds to +to_str+, then the
+ *  two strings are compared using case equality Object#===.
+ *
+ *  Otherwise, returns similarly to String#eql?, comparing length and content.
  */
 
 VALUE
@@ -7846,7 +7851,7 @@ rb_str_is_ascii_only_p(VALUE str)
  * \pre 	_len_ must not be negative.
  * \post	the length of the returned string in characters is less than or equal to _len_.
  * \post	If the length of _str_ is less than or equal _len_, returns _str_ itself.
- * \post	the encoded of returned string is equal to the encoded of _str_.
+ * \post	the encoding of returned string is equal to the encoding of _str_.
  * \post	the class of returned string is equal to the class of _str_.
  * \note	the length is counted in characters.
  */

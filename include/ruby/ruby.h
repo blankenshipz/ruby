@@ -1266,7 +1266,11 @@ void rb_gc_writebarrier_unprotect_promoted(VALUE obj);
 #define OBJ_WRITE(a, slot, b)       rb_obj_write((VALUE)(a), (VALUE *)(slot), (VALUE)(b), __FILE__, __LINE__)
 #define OBJ_WRITTEN(a, oldv, b)     rb_obj_written((VALUE)(a), (VALUE)(oldv), (VALUE)(b), __FILE__, __LINE__)
 
-#if defined(USE_RGENGC_LOGGING_WB_UNPROTECT) && USE_RGENGC_LOGGING_WB_UNPROTECT
+#ifndef USE_RGENGC_LOGGING_WB_UNPROTECT
+#define USE_RGENGC_LOGGING_WB_UNPROTECT 0
+#endif
+
+#if USE_RGENGC_LOGGING_WB_UNPROTECT
 void rb_gc_unprotect_logging(void *objptr, const char *filename, int line);
 #define RGENGC_LOGGING_WB_UNPROTECT rb_gc_unprotect_logging
 #endif
@@ -1769,6 +1773,7 @@ int ruby_native_thread_p(void);
 
 /* internal events */
 #define RUBY_INTERNAL_EVENT_SWITCH        0x040000
+#define RUBY_EVENT_SWITCH                 0x040000 /* obsolete name. this macro is for compatibility */
                                        /* 0x080000 */
 #define RUBY_INTERNAL_EVENT_NEWOBJ        0x100000
 #define RUBY_INTERNAL_EVENT_FREEOBJ       0x200000

@@ -52,19 +52,6 @@
 #include <malloc.h>
 #endif
 
-#ifdef HAVE_VALGRIND_MEMCHECK_H
-# include <valgrind/memcheck.h>
-# ifndef VALGRIND_MAKE_MEM_DEFINED
-#  define VALGRIND_MAKE_MEM_DEFINED(p, n) VALGRIND_MAKE_READABLE((p), (n))
-# endif
-# ifndef VALGRIND_MAKE_MEM_UNDEFINED
-#  define VALGRIND_MAKE_MEM_UNDEFINED(p, n) VALGRIND_MAKE_WRITABLE((p), (n))
-# endif
-#else
-# define VALGRIND_MAKE_MEM_DEFINED(p, n) 0
-# define VALGRIND_MAKE_MEM_UNDEFINED(p, n) 0
-#endif
-
 #define rb_setjmp(env) RUBY_SETJMP(env)
 #define rb_jmp_buf rb_jmpbuf_t
 
@@ -3563,6 +3550,8 @@ gc_marks_test(rb_objspace_t *objspace)
      *   exported_bitmap: after minor marking
      */
 
+    /* inhibit gc for st's operation */
+    dont_gc = 1;
 
     if(!monitored_object_table)
 	monitored_object_table = st_init_numtable();
@@ -3621,6 +3610,7 @@ gc_marks_test(rb_objspace_t *objspace)
 	gc_free_exported_bitmaps(objspace, exported_bitmaps);
 	objspace->rgengc.have_saved_bitmaps = FALSE;
     }
+    dont_gc = 0;
 }
 #endif /* RGENGC_CHECK_MODE >= 2 */
 

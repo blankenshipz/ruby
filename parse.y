@@ -761,7 +761,7 @@ static void token_info_pop(struct parser_params*, const char *token);
 %type <node> singleton strings string string1 xstring regexp
 %type <node> string_contents xstring_contents regexp_contents string_content
 %type <node> words symbols symbol_list qwords qsymbols word_list qword_list qsym_list word
-%type <node> literal numeric dsym cpath
+%type <node> literal numeric simple_numeric dsym cpath
 %type <node> top_compstmt top_stmts top_stmt
 %type <node> bodystmt compstmt stmts stmt_or_begin stmt expr arg primary command command_call method_call
 %type <node> expr_value arg_value primary_value fcall
@@ -2110,7 +2110,7 @@ arg		: lhs '=' arg
 			$$ = dispatch3(binary, $1, ripper_intern("**"), $3);
 		    %*/
 		    }
-		| tUMINUS_NUM tINTEGER tPOW arg
+		| tUMINUS_NUM simple_numeric tPOW arg
 		    {
 		    /*%%%*/
 			$$ = NEW_CALL(call_bin_op($2, tPOW, $4), tUMINUS, 0);
@@ -2119,33 +2119,6 @@ arg		: lhs '=' arg
 			$$ = dispatch2(unary, ripper_intern("-@"), $$);
 		    %*/
 		    }
-		| tUMINUS_NUM tFLOAT tPOW arg
-		    {
-		    /*%%%*/
-			$$ = NEW_CALL(call_bin_op($2, tPOW, $4), tUMINUS, 0);
-		    /*%
-			$$ = dispatch3(binary, $2, ripper_intern("**"), $4);
-			$$ = dispatch2(unary, ripper_intern("-@"), $$);
-		    %*/
-		    }
-                | tUMINUS_NUM tRATIONAL tPOW arg
-                    {
-                    /*%%%*/
-                        $$ = NEW_CALL(call_bin_op($2, tPOW, $4), tUMINUS, 0);
-                    /*%
-                        $$ = dispatch3(binary, $2, ripper_intern("**"), $4);
-                        $$ = dispatch2(unary, ripper_intern("-@"), $$);
-                    %*/
-                    }
-                | tUMINUS_NUM tIMAGINARY tPOW arg
-                    {
-                    /*%%%*/
-                        $$ = NEW_CALL(call_bin_op($2, tPOW, $4), tUMINUS, 0);
-                    /*%
-                        $$ = dispatch3(binary, $2, ripper_intern("**"), $4);
-                        $$ = dispatch2(unary, ripper_intern("-@"), $$);
-                    %*/
-                    }
 		| tUPLUS arg
 		    {
 		    /*%%%*/
@@ -4310,42 +4283,21 @@ dsym		: tSYMBEG xstring_contents tSTRING_END
 		    }
 		;
 
-numeric 	: tINTEGER
+numeric 	: simple_numeric
+		| tUMINUS_NUM simple_numeric   %prec tLOWEST
+		    {
+		    /*%%%*/
+			$$ = negate_lit($2);
+		    /*%
+			$$ = dispatch2(unary, ripper_intern("-@"), $2);
+		    %*/
+		    }
+		;
+
+simple_numeric	: tINTEGER
 		| tFLOAT
-                | tRATIONAL
-                | tIMAGINARY
-		| tUMINUS_NUM tINTEGER	       %prec tLOWEST
-		    {
-		    /*%%%*/
-			$$ = negate_lit($2);
-		    /*%
-			$$ = dispatch2(unary, ripper_intern("-@"), $2);
-		    %*/
-		    }
-		| tUMINUS_NUM tFLOAT	       %prec tLOWEST
-		    {
-		    /*%%%*/
-			$$ = negate_lit($2);
-		    /*%
-			$$ = dispatch2(unary, ripper_intern("-@"), $2);
-		    %*/
-		    }
-                | tUMINUS_NUM tRATIONAL	       %prec tLOWEST
-                    {
-                    /*%%%*/
-                        $$ = negate_lit($2);
-                    /*%
-                        $$ = dispatch2(unary, ripper_intern("-@"), $2);
-                    %*/
-                    }
-                | tUMINUS_NUM tIMAGINARY       %prec tLOWEST
-                    {
-                    /*%%%*/
-                        $$ = negate_lit($2);
-                    /*%
-                        $$ = dispatch2(unary, ripper_intern("-@"), $2);
-                    %*/
-                    }
+		| tRATIONAL
+		| tIMAGINARY
 		;
 
 user_variable	: tIDENTIFIER
@@ -5072,7 +5024,9 @@ static int parser_here_document(struct parser_params*,NODE*);
 # define heredoc_identifier()         parser_heredoc_identifier(parser)
 # define heredoc_restore(n)           parser_heredoc_restore(parser,(n))
 # define whole_match_p(e,l,i)         parser_whole_match_p(parser,(e),(l),(i))
-# define number_literal_suffix(v, f)  parser_number_literal_suffix(parser, (v), (f))
+# define number_literal_suffix(f)     parser_number_literal_suffix(parser, (f))
+# define set_number_literal(v, t, f)  parser_set_number_literal(parser, (v), (t), (f))
+# define set_integer_literal(v, f)    parser_set_integer_literal(parser, (v), (f))
 
 #ifndef RIPPER
 # define set_yylval_str(x) (yylval.node = NEW_STR(x))
@@ -6421,7 +6375,11 @@ parser_whole_match_p(struct parser_params *parser,
 	while (*p && ISSPACE(*p)) p++;
     }
     n = lex_pend - (p + len);
-    if (n < 0 || (n > 0 && p[len] != '\n' && p[len] != '\r')) return FALSE;
+    if (n < 0) return FALSE;
+    if (n > 0 && p[len] != '\n') {
+	if (p[len] != '\r') return FALSE;
+	if (n <= 1 || p[len+1] != '\n') return FALSE;
+    }
     return strncmp(eos, p, len) == 0;
 }
 
@@ -6430,51 +6388,54 @@ parser_whole_match_p(struct parser_params *parser,
 #define NUM_SUFFIX_ALL 3
 
 static int
-parser_number_literal_suffix(struct parser_params *parser, VALUE v, int const flag)
+parser_number_literal_suffix(struct parser_params *parser, int mask)
 {
-    int c = nextc();
-    if ((flag & NUM_SUFFIX_R) > 0 && c == 'r') {
-        c = nextc();
-        if (c != 'i' && (ISALNUM(c) || c == '_')) {
-            pushback(c);
-            pushback('r');
-            goto finish;
-        }
+    int c, result = 0;
+    const char *lastp = lex_p;
 
-        if (RB_TYPE_P(v, T_FLOAT)) {
-            v = rb_flt_rationalize(v);
-        }
-        else {
-            v = rb_rational_new(v, INT2FIX(1));
-        }
+    while ((c = nextc()) != -1) {
+	if ((mask & NUM_SUFFIX_I) && c == 'i') {
+	    result |= (mask & NUM_SUFFIX_I);
+	    mask &= ~NUM_SUFFIX_I;
+	    /* r after i, rational of complex is disallowed */
+	    mask &= ~NUM_SUFFIX_R;
+	    continue;
+	}
+	if ((mask & NUM_SUFFIX_R) && c == 'r') {
+	    result |= (mask & NUM_SUFFIX_R);
+	    mask &= ~NUM_SUFFIX_R;
+	    continue;
+	}
+	if (!ISASCII(c) || ISALPHA(c) || c == '_') {
+	    lex_p = lastp;
+	    return 0;
+	}
+	pushback(c);
+	break;
     }
-    if ((flag & NUM_SUFFIX_I) > 0 && c == 'i') {
-        c = nextc();
-        if (ISALNUM(c) || c == '_') {
-            pushback(c);
-            pushback('i');
-            goto finish;
-        }
+    return result;
+}
 
-        v = rb_complex_new(INT2FIX(0), v);
+static int
+parser_set_number_literal(struct parser_params *parser, VALUE v, int type, int suffix)
+{
+    if (suffix & NUM_SUFFIX_I) {
+	v = rb_complex_raw(INT2FIX(0), v);
+	type = tIMAGINARY;
     }
-    pushback(c);
-
-finish:
     set_yylval_literal(v);
-    switch (TYPE(v)) {
-    case T_FIXNUM: case T_BIGNUM:
-        return tINTEGER;
-    case T_FLOAT:
-        return tFLOAT;
-    case T_RATIONAL:
-        return tRATIONAL;
-    case T_COMPLEX:
-        return tIMAGINARY;
-    default:
-        break;
+    return type;
+}
+
+static int
+parser_set_integer_literal(struct parser_params *parser, VALUE v, int suffix)
+{
+    int type = tINTEGER;
+    if (suffix & NUM_SUFFIX_R) {
+	v = rb_rational_raw1(v);
+	type = tRATIONAL;
     }
-    UNREACHABLE;
+    return set_number_literal(v, type, suffix);
 }
 
 #ifdef RIPPER
@@ -7473,7 +7434,7 @@ parser_yylex(struct parser_params *parser)
       case '5': case '6': case '7': case '8': case '9':
 	{
 	    int is_float, seen_point, seen_e, nondigit;
-            VALUE v;
+	    int suffix;
 
 	    is_float = seen_point = seen_e = nondigit = 0;
 	    lex_state = EXPR_END;
@@ -7507,8 +7468,8 @@ parser_yylex(struct parser_params *parser)
 			no_digits();
 		    }
 		    else if (nondigit) goto trailing_uc;
-                    v = rb_cstr_to_inum(tok(), 16, FALSE);
-                    return number_literal_suffix(v, NUM_SUFFIX_ALL);
+		    suffix = number_literal_suffix(NUM_SUFFIX_ALL);
+		    return set_integer_literal(rb_cstr_to_inum(tok(), 16, FALSE), suffix);
 		}
 		if (c == 'b' || c == 'B') {
 		    /* binary */
@@ -7531,8 +7492,8 @@ parser_yylex(struct parser_params *parser)
 			no_digits();
 		    }
 		    else if (nondigit) goto trailing_uc;
-                    v = rb_cstr_to_inum(tok(), 2, FALSE);
-                    return number_literal_suffix(v, NUM_SUFFIX_ALL);
+		    suffix = number_literal_suffix(NUM_SUFFIX_ALL);
+		    return set_integer_literal(rb_cstr_to_inum(tok(), 2, FALSE), suffix);
 		}
 		if (c == 'd' || c == 'D') {
 		    /* decimal */
@@ -7555,8 +7516,8 @@ parser_yylex(struct parser_params *parser)
 			no_digits();
 		    }
 		    else if (nondigit) goto trailing_uc;
-                    v = rb_cstr_to_inum(tok(), 10, FALSE);
-                    return number_literal_suffix(v, NUM_SUFFIX_ALL);
+		    suffix = number_literal_suffix(NUM_SUFFIX_ALL);
+		    return set_integer_literal(rb_cstr_to_inum(tok(), 10, FALSE), suffix);
 		}
 		if (c == '_') {
 		    /* 0_0 */
@@ -7587,8 +7548,8 @@ parser_yylex(struct parser_params *parser)
 			pushback(c);
 			tokfix();
 			if (nondigit) goto trailing_uc;
-                        v = rb_cstr_to_inum(tok(), 8, FALSE);
-                        return number_literal_suffix(v, NUM_SUFFIX_ALL);
+			suffix = number_literal_suffix(NUM_SUFFIX_ALL);
+			return set_integer_literal(rb_cstr_to_inum(tok(), 8, FALSE), suffix);
 		    }
 		    if (nondigit) {
 			pushback(c);
@@ -7604,7 +7565,8 @@ parser_yylex(struct parser_params *parser)
 		}
 		else {
 		    pushback(c);
-                    return number_literal_suffix(INT2FIX(0), NUM_SUFFIX_ALL);
+		    suffix = number_literal_suffix(NUM_SUFFIX_ALL);
+		    return set_integer_literal(INT2FIX(0), suffix);
 		}
 	    }
 
@@ -7629,10 +7591,10 @@ parser_yylex(struct parser_params *parser)
 			}
 			c = c0;
 		    }
+		    seen_point = toklen();
 		    tokadd('.');
 		    tokadd(c);
 		    is_float++;
-		    seen_point++;
 		    nondigit = 0;
 		    break;
 
@@ -7681,16 +7643,30 @@ parser_yylex(struct parser_params *parser)
 	    }
 	    tokfix();
 	    if (is_float) {
-		double d = strtod(tok(), 0);
-		if (errno == ERANGE) {
-		    rb_warningS("Float %s out of range", tok());
-		    errno = 0;
+		int type = tFLOAT;
+		VALUE v;
+
+		suffix = number_literal_suffix(seen_e ? NUM_SUFFIX_I : NUM_SUFFIX_ALL);
+		if (suffix & NUM_SUFFIX_R) {
+		    char *point = &tok()[seen_point];
+		    size_t fraclen = toklen()-seen_point-1;
+		    type = tRATIONAL;
+		    memmove(point, point+1, fraclen+1);
+		    v = rb_cstr_to_inum(tok(), 10, FALSE);
+		    v = rb_rational_new(v, rb_int_positive_pow(10, fraclen));
 		}
-                v = DBL2NUM(d);
-                return number_literal_suffix(v, seen_e ? NUM_SUFFIX_I : NUM_SUFFIX_ALL);
+		else {
+		    double d = strtod(tok(), 0);
+		    if (errno == ERANGE) {
+			rb_warningS("Float %s out of range", tok());
+			errno = 0;
+		    }
+		    v = DBL2NUM(d);
+		}
+		return set_number_literal(v, type, suffix);
 	    }
-            v = rb_cstr_to_inum(tok(), 10, FALSE);
-            return number_literal_suffix(v, NUM_SUFFIX_ALL);
+	    suffix = number_literal_suffix(NUM_SUFFIX_ALL);
+	    return set_integer_literal(rb_cstr_to_inum(tok(), 10, FALSE), suffix);
 	}
 
       case ')':
@@ -8794,9 +8770,35 @@ block_dup_check_gen(struct parser_params *parser, NODE *node1, NODE *node2)
     }
 }
 
+static const char id_type_names[][9] = {
+    "LOCAL",
+    "INSTANCE",
+    "",				/* INSTANCE2 */
+    "GLOBAL",
+    "ATTRSET",
+    "CONST",
+    "CLASS",
+    "JUNK",
+};
+
 ID
 rb_id_attrset(ID id)
 {
+    if (!is_notop_id(id)) {
+	rb_bug("rb_id_attrset: operator ID - %"PRIdVALUE, (VALUE)id);
+    }
+    else {
+	int scope = (int)(id & ID_SCOPE_MASK);
+	switch (scope) {
+	  case ID_LOCAL: case ID_INSTANCE: case ID_GLOBAL:
+	  case ID_CONST: case ID_CLASS: case ID_JUNK:
+	    break;
+	  default:
+	    rb_bug("rb_id_attrset: %s ID - %"PRIdVALUE, id_type_names[scope],
+		   (VALUE)id);
+
+	}
+    }
     id &= ~ID_SCOPE_MASK;
     id |= ID_ATTRSET;
     return id;
@@ -8915,11 +8917,6 @@ value_expr_gen(struct parser_params *parser, NODE *node)
     }
     while (node) {
 	switch (nd_type(node)) {
-	  case NODE_DEFN:
-	  case NODE_DEFS:
-	    parser_warning(node, "void value expression");
-	    return FALSE;
-
 	  case NODE_RETURN:
 	  case NODE_BREAK:
 	  case NODE_NEXT:
@@ -9402,6 +9399,8 @@ negate_lit(NODE *node)
 	node->nd_lit = LONG2FIX(-FIX2LONG(node->nd_lit));
 	break;
       case T_BIGNUM:
+      case T_RATIONAL:
+      case T_COMPLEX:
 	node->nd_lit = rb_funcall(node->nd_lit,tUMINUS,0,0);
 	break;
       case T_FLOAT:
@@ -9417,6 +9416,7 @@ negate_lit(NODE *node)
 #endif
 	break;
       default:
+	rb_bug("unknown literal type passed to negate_lit");
 	break;
     }
     return node;
@@ -10186,8 +10186,11 @@ rb_enc_symname_p(const char *name, rb_encoding *enc)
     return rb_enc_symname2_p(name, strlen(name), enc);
 }
 
+#define IDSET_ATTRSET_FOR_SYNTAX ((1U<<ID_LOCAL)|(1U<<ID_CONST))
+#define IDSET_ATTRSET_FOR_INTERN (~(~0U<<ID_SCOPE_MASK) & ~(1U<<ID_ATTRSET))
+
 static int
-rb_enc_symname_type(const char *name, long len, rb_encoding *enc)
+rb_enc_symname_type(const char *name, long len, rb_encoding *enc, unsigned int allowed_atttset)
 {
     const char *m = name;
     const char *e = m + len;
@@ -10271,7 +10274,7 @@ rb_enc_symname_type(const char *name, long len, rb_encoding *enc)
 	    ++m;
 	    break;
 	  case '=':
-	    if (type != ID_CONST && type != ID_LOCAL) return -1;
+	    if (!(allowed_atttset & (1U << type))) return -1;
 	    type = ID_ATTRSET;
 	    ++m;
 	    break;
@@ -10284,15 +10287,15 @@ rb_enc_symname_type(const char *name, long len, rb_encoding *enc)
 int
 rb_enc_symname2_p(const char *name, long len, rb_encoding *enc)
 {
-    return rb_enc_symname_type(name, len, enc) != -1;
+    return rb_enc_symname_type(name, len, enc, IDSET_ATTRSET_FOR_SYNTAX) != -1;
 }
 
 static int
-rb_str_symname_type(VALUE name)
+rb_str_symname_type(VALUE name, unsigned int allowed_atttset)
 {
     const char *ptr = StringValuePtr(name);
     long len = RSTRING_LEN(name);
-    int type = rb_enc_symname_type(ptr, len, rb_enc_get(name));
+    int type = rb_enc_symname_type(ptr, len, rb_enc_get(name), allowed_atttset);
     RB_GC_GUARD(name);
     return type;
 }
@@ -10423,24 +10426,25 @@ intern_str(VALUE str)
 		}
 	    }
 	}
-
-	if (m[last] == '=') {
-	    /* attribute assignment */
-	    id = rb_intern3(name, last, enc);
-	    if (id > tLAST_OP_ID && !is_attrset_id(id)) {
-		enc = rb_enc_get(rb_id2str(id));
-		id = rb_id_attrset(id);
-		goto id_register;
-	    }
-	    id = ID_ATTRSET;
+	break;
+    }
+    if (name[last] == '=') {
+	/* attribute assignment */
+	id = rb_intern3(name, last, enc);
+	if (id > tLAST_OP_ID && !is_attrset_id(id)) {
+	    enc = rb_enc_get(rb_id2str(id));
+	    id = rb_id_attrset(id);
+	    goto id_register;
 	}
-	else if (rb_enc_isupper(m[0], enc)) {
+	id = ID_ATTRSET;
+    }
+    else if (id == 0) {
+	if (rb_enc_isupper(m[0], enc)) {
 	    id = ID_CONST;
-        }
+	}
 	else {
 	    id = ID_LOCAL;
 	}
-	break;
     }
     if (!rb_enc_isdigit(*m, enc)) {
 	while (m <= name + last && is_identchar(m, e, enc)) {
@@ -10452,7 +10456,7 @@ intern_str(VALUE str)
 	    }
 	}
     }
-    if (m - name < len) id = ID_JUNK;
+    if (id != ID_ATTRSET && m - name < len) id = ID_JUNK;
     if (sym_check_asciionly(str)) symenc = rb_usascii_encoding();
   new_id:
     if (symenc != enc) rb_enc_associate(str, symenc);
@@ -10535,16 +10539,21 @@ rb_id2str(ID id)
     }
 
     if (is_attrset_id(id)) {
-	ID id2 = (id & ~ID_SCOPE_MASK) | ID_LOCAL;
+	ID id_stem = (id & ~ID_SCOPE_MASK);
 	VALUE str;
 
-	while (!(str = rb_id2str(id2))) {
-	    if (!is_local_id(id2)) return 0;
-	    id2 = (id & ~ID_SCOPE_MASK) | ID_CONST;
-	}
+	do {
+	    if (!!(str = rb_id2str(id_stem | ID_LOCAL))) break;
+	    if (!!(str = rb_id2str(id_stem | ID_CONST))) break;
+	    if (!!(str = rb_id2str(id_stem | ID_INSTANCE))) break;
+	    if (!!(str = rb_id2str(id_stem | ID_GLOBAL))) break;
+	    if (!!(str = rb_id2str(id_stem | ID_CLASS))) break;
+	    if (!!(str = rb_id2str(id_stem | ID_JUNK))) break;
+	    return 0;
+	} while (0);
 	str = rb_str_dup(str);
 	rb_str_cat(str, "=", 1);
-	rb_intern_str(str);
+	register_symid_str(id, str);
 	if (st_lookup(global_symbols.id_str, id, &data)) {
             VALUE str = (VALUE)data;
             if (RBASIC(str)->klass == 0)
@@ -10717,43 +10726,43 @@ rb_check_id_cstr(const char *ptr, long len, rb_encoding *enc)
 int
 rb_is_const_name(VALUE name)
 {
-    return rb_str_symname_type(name) == ID_CONST;
+    return rb_str_symname_type(name, 0) == ID_CONST;
 }
 
 int
 rb_is_class_name(VALUE name)
 {
-    return rb_str_symname_type(name) == ID_CLASS;
+    return rb_str_symname_type(name, 0) == ID_CLASS;
 }
 
 int
 rb_is_global_name(VALUE name)
 {
-    return rb_str_symname_type(name) == ID_GLOBAL;
+    return rb_str_symname_type(name, 0) == ID_GLOBAL;
 }
 
 int
 rb_is_instance_name(VALUE name)
 {
-    return rb_str_symname_type(name) == ID_INSTANCE;
+    return rb_str_symname_type(name, 0) == ID_INSTANCE;
 }
 
 int
 rb_is_attrset_name(VALUE name)
 {
-    return rb_str_symname_type(name) == ID_ATTRSET;
+    return rb_str_symname_type(name, IDSET_ATTRSET_FOR_INTERN) == ID_ATTRSET;
 }
 
 int
 rb_is_local_name(VALUE name)
 {
-    return rb_str_symname_type(name) == ID_LOCAL;
+    return rb_str_symname_type(name, 0) == ID_LOCAL;
 }
 
 int
 rb_is_method_name(VALUE name)
 {
-    switch (rb_str_symname_type(name)) {
+    switch (rb_str_symname_type(name, 0)) {
       case ID_LOCAL: case ID_ATTRSET: case ID_JUNK:
 	return TRUE;
     }
@@ -10763,7 +10772,7 @@ rb_is_method_name(VALUE name)
 int
 rb_is_junk_name(VALUE name)
 {
-    return rb_str_symname_type(name) == -1;
+    return rb_str_symname_type(name, IDSET_ATTRSET_FOR_SYNTAX) == -1;
 }
 
 #endif /* !RIPPER */
@@ -11063,12 +11072,14 @@ ripper_validate_object(VALUE self, VALUE x)
     if (SYMBOL_P(x)) return x;
     if (!rb_is_pointer_to_heap(x))
         rb_raise(rb_eArgError, "invalid pointer: %p", x);
-    switch (TYPE(x)) {
+    switch (BUILTIN_TYPE(x)) {
       case T_STRING:
       case T_OBJECT:
       case T_ARRAY:
       case T_BIGNUM:
       case T_FLOAT:
+      case T_COMPLEX:
+      case T_RATIONAL:
         return x;
       case T_NODE:
 	if (nd_type(x) != NODE_LASGN) {

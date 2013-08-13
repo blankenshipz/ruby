@@ -19,6 +19,9 @@
 #include <sys/cygwin.h>
 #include <wchar.h>
 #endif
+#ifdef __APPLE__
+#include <CoreFoundation/CFString.h>
+#endif
 
 #include "ruby/ruby.h"
 #include "ruby/io.h"
@@ -236,9 +239,78 @@ rb_str_encode_ospath(VALUE path)
     if (enc != utf8) {
 	path = rb_str_conv_enc(path, enc, utf8);
     }
+#elif defined __APPLE__
+    path = rb_str_conv_enc(path, NULL, rb_utf8_encoding());
 #endif
     return path;
 }
+
+#ifdef __APPLE__
+static VALUE
+rb_str_normalize_ospath0(const char *ptr, long len)
+{
+    VALUE str;
+    CFIndex buflen = 0;
+    CFRange all;
+    CFStringRef s = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
+						  (const UInt8 *)ptr, len,
+						  kCFStringEncodingUTF8, FALSE,
+						  kCFAllocatorNull);
+    CFMutableStringRef m = CFStringCreateMutableCopy(kCFAllocatorDefault, len, s);
+
+    CFStringNormalize(m, kCFStringNormalizationFormC);
+    all = CFRangeMake(0, CFStringGetLength(m));
+    CFStringGetBytes(m, all, kCFStringEncodingUTF8, '?', FALSE, NULL, 0, &buflen);
+    str = rb_enc_str_new(0, buflen, rb_utf8_encoding());
+    CFStringGetBytes(m, all, kCFStringEncodingUTF8, '?', FALSE, (UInt8 *)RSTRING_PTR(str),
+		     buflen, &buflen);
+    rb_str_set_len(str, buflen);
+    CFRelease(m);
+    CFRelease(s);
+    return str;
+}
+
+VALUE
+rb_str_normalize_ospath(const char *ptr, long len)
+{
+    const char *p = ptr;
+    const char *e = ptr + len;
+    const char *p1 = p;
+    VALUE str = rb_str_buf_new(len);
+    rb_encoding *enc = rb_utf8_encoding();
+    rb_enc_associate(str, enc);
+
+    while (p < e) {
+	int l, c;
+	int r = rb_enc_precise_mbclen(p, e, enc);
+	if (!MBCLEN_CHARFOUND_P(r)) {
+	    /* invalid byte shall not happen but */
+	    rb_str_append(str, rb_str_normalize_ospath0(p1, p-p1));
+	    rb_str_cat2(str, "\xEF\xBF\xBD");
+	    p += 1;
+	}
+	l = MBCLEN_CHARFOUND_LEN(r);
+	c = rb_enc_mbc_to_codepoint(p, e, enc);
+	if ((0x2000 <= c && c <= 0x2FFF) || (0xF900 <= c && c <= 0xFAFF) ||
+		(0x2F800 <= c && c <= 0x2FAFF)) {
+	    if (p - p1 > 0) {
+		rb_str_append(str, rb_str_normalize_ospath0(p1, p-p1));
+	    }
+	    rb_str_cat(str, p, l);
+	    p += l;
+	    p1 = p;
+	}
+	else {
+	    p += l;
+	}
+    }
+    if (p - p1 > 0) {
+	rb_str_append(str, rb_str_normalize_ospath0(p1, p-p1));
+    }
+
+    return str;
+}
+#endif
 
 static long
 apply2files(void (*func)(const char *, VALUE, void *), VALUE vargs, void *arg)

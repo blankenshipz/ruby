@@ -618,7 +618,7 @@ num_to_int(VALUE num)
  *  Float objects represent inexact real numbers using the native
  *  architecture's double-precision floating point representation.
  *
- *  Floating point has a different arithmetic and is a inexact number.
+ *  Floating point has a different arithmetic and is an inexact number.
  *  So you should know its esoteric system. see following:
  *
  *  - http://docs.sun.com/source/806-3568/ncg_goldberg.html
@@ -2392,8 +2392,8 @@ int_even_p(VALUE num)
 
 /*
  *  call-seq:
- *     fixnum.next  ->  integer
- *     fixnum.succ  ->  integer
+ *     int.next  ->  integer
+ *     int.succ  ->  integer
  *
  *  Returns the Integer equal to +int+ + 1.
  *
@@ -2984,6 +2984,12 @@ int_pow(long x, unsigned long y)
     } while (--y);
     if (neg) z = -z;
     return LONG2NUM(z);
+}
+
+VALUE
+rb_int_positive_pow(long x, unsigned long y)
+{
+    return int_pow(x, y);
 }
 
 /*

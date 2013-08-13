@@ -19,6 +19,19 @@ extern "C" {
 #endif
 #endif
 
+#ifdef HAVE_VALGRIND_MEMCHECK_H
+# include <valgrind/memcheck.h>
+# ifndef VALGRIND_MAKE_MEM_DEFINED
+#  define VALGRIND_MAKE_MEM_DEFINED(p, n) VALGRIND_MAKE_READABLE((p), (n))
+# endif
+# ifndef VALGRIND_MAKE_MEM_UNDEFINED
+#  define VALGRIND_MAKE_MEM_UNDEFINED(p, n) VALGRIND_MAKE_WRITABLE((p), (n))
+# endif
+#else
+# define VALGRIND_MAKE_MEM_DEFINED(p, n) 0
+# define VALGRIND_MAKE_MEM_UNDEFINED(p, n) 0
+#endif
+
 #define numberof(array) ((int)(sizeof(array) / sizeof((array)[0])))
 
 #define STATIC_ASSERT(name, expr) typedef int static_assert_##name##_check[1 - 2*!(expr)]
@@ -500,8 +513,16 @@ VALUE rb_big_mul_karatsuba(VALUE x, VALUE y);
 VALUE rb_big_mul_toom3(VALUE x, VALUE y);
 VALUE rb_big_sq_fast(VALUE x);
 
+/* file.c */
+#ifdef __APPLE__
+VALUE rb_str_normalize_ospath(const char *ptr, long len);
+#endif
+
 /* io.c */
 void rb_maygvl_fd_fix_cloexec(int fd);
+
+/* numeric.c */
+VALUE rb_int_positive_pow(long x, unsigned long y);
 
 /* process.c */
 int rb_exec_async_signal_safe(const struct rb_execarg *e, char *errmsg, size_t errmsg_buflen);

@@ -1205,7 +1205,8 @@ opt_enc_index(VALUE enc_name)
     return i;
 }
 
-#define rb_progname (GET_VM()->progname)
+#define rb_progname      (GET_VM()->progname)
+#define rb_orig_progname (GET_VM()->orig_progname)
 VALUE rb_argv0;
 
 static VALUE
@@ -1586,9 +1587,9 @@ load_file_internal(VALUE arg)
     extern VALUE rb_stdin;
     struct load_file_arg *argp = (struct load_file_arg *)arg;
     VALUE parser = argp->parser;
-    VALUE fname_v = rb_str_encode_ospath(argp->fname);
+    VALUE orig_fname = argp->fname;
+    VALUE fname_v = rb_str_encode_ospath(orig_fname);
     const char *fname = StringValueCStr(fname_v);
-    const char *orig_fname = StringValueCStr(argp->fname);
     int script = argp->script;
     struct cmdline_options *opt = argp->opt;
     VALUE f;
@@ -1722,10 +1723,10 @@ load_file_internal(VALUE arg)
     if (NIL_P(f)) {
 	f = rb_str_new(0, 0);
 	rb_enc_associate(f, enc);
-	return (VALUE)rb_parser_compile_string(parser, orig_fname, f, line_start);
+	return (VALUE)rb_parser_compile_string_path(parser, orig_fname, f, line_start);
     }
     rb_funcall(f, set_encoding, 2, rb_enc_from_encoding(enc), rb_str_new_cstr("-"));
-    tree = rb_parser_compile_file(parser, orig_fname, f, line_start);
+    tree = rb_parser_compile_file_path(parser, orig_fname, f, line_start);
     rb_funcall(f, set_encoding, 1, rb_parser_encoding(parser));
     if (script && tree && rb_parser_end_seen_p(parser)) {
 	/*
@@ -1780,21 +1781,49 @@ rb_load_file_str(VALUE fname_v)
     return load_file(rb_parser_new(), fname_v, 0, cmdline_options_init(&opt));
 }
 
+/*
+ *  call-seq:
+ *     Process.argv0  -> frozen_string
+ *
+ *  Returns the name of the script being executed.  The value is not
+ *  affected by assigning a new value to $0.
+ */
+
+static VALUE
+proc_argv0(VALUE process)
+{
+    return rb_orig_progname;
+}
+
+/*
+ *  call-seq:
+ *     Process.setproctitle(string)  -> string
+ *
+ *  Returns the process title that appears on the ps(1) command.  Not
+ *  necessarily effective on all platforms.
+ *
+ *  Calling this method does not affect the value of $0.
+ *
+ *     Process.setproctitle('myapp: worker #%d' % worker_id)
+ */
+
+static VALUE
+proc_setproctitle(VALUE process, VALUE title)
+{
+    StringValue(title);
+
+    setproctitle("%.*s", RSTRING_LENINT(title), RSTRING_PTR(title));
+
+    return title;
+}
+
 static void
 set_arg0(VALUE val, ID id)
 {
-    char *s;
-    long i;
-
     if (origarg.argv == 0)
 	rb_raise(rb_eRuntimeError, "$0 not initialized");
-    StringValue(val);
-    s = RSTRING_PTR(val);
-    i = RSTRING_LEN(val);
 
-    setproctitle("%.*s", (int)i, s);
-
-    rb_progname = rb_obj_freeze(rb_external_str_new(s, i));
+    rb_progname = rb_str_new_frozen(proc_setproctitle(rb_mProcess, val));
 }
 
 /*! Sets the current script name to this value.
@@ -1806,7 +1835,7 @@ void
 ruby_script(const char *name)
 {
     if (name) {
-	rb_progname = rb_external_str_new(name, strlen(name));
+	rb_orig_progname = rb_progname = rb_external_str_new(name, strlen(name));
 	rb_vm_set_progname(rb_progname);
     }
 }
@@ -1818,7 +1847,7 @@ ruby_script(const char *name)
 void
 ruby_set_script_name(VALUE name)
 {
-    rb_progname = rb_str_dup(name);
+    rb_orig_progname = rb_progname = rb_str_dup(name);
     rb_vm_set_progname(rb_progname);
 }
 
@@ -1885,6 +1914,9 @@ ruby_prog_init(void)
 
     rb_define_hooked_variable("$0", &rb_progname, 0, set_arg0);
     rb_define_hooked_variable("$PROGRAM_NAME", &rb_progname, 0, set_arg0);
+
+    rb_define_module_function(rb_mProcess, "argv0", proc_argv0, 0);
+    rb_define_module_function(rb_mProcess, "setproctitle", proc_setproctitle, 1);
 
     /*
      * ARGV contains the command line arguments used to run ruby with the

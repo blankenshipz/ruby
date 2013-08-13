@@ -370,6 +370,21 @@ eom
     end
   end
 
+  def test_value_of_def
+    assert_separately [], <<-EOS
+      assert_equal(:foo, (def foo; end))
+      assert_equal(:foo, (def (Object.new).foo; end))
+    EOS
+  end
+
+  def test_heredoc_cr
+    assert_syntax_error("puts <<""EOS\n""ng\n""EOS\r""NO\n", /can't find string "EOS" anywhere before EOF/)
+  end
+
+  def test__END___cr
+    assert_syntax_error("__END__\r<<<<<\n", /unexpected <</)
+  end
+
   private
 
   def not_label(x) @result = x; @not_label ||= nil end

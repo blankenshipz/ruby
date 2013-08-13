@@ -377,7 +377,7 @@ typedef struct rb_vm_struct {
 
     int src_encoding_index;
 
-    VALUE verbose, debug, progname;
+    VALUE verbose, debug, orig_progname, progname;
     VALUE coverages;
 
     struct unlinked_method_entry_list_entry *unlinked_method_entry_list;
@@ -825,6 +825,7 @@ VALUE rb_vm_invoke_proc(rb_thread_t *th, rb_proc_t *proc,
 VALUE rb_vm_make_proc(rb_thread_t *th, const rb_block_t *block, VALUE klass);
 VALUE rb_vm_make_env_object(rb_thread_t *th, rb_control_frame_t *cfp);
 VALUE rb_binding_new_with_cfp(rb_thread_t *th, const rb_control_frame_t *src_cfp);
+VALUE *rb_binding_add_dynavars(rb_binding_t *bind, int dyncount, const ID *dynvars);
 void rb_vm_inc_const_missing_count(void);
 void rb_vm_gvl_destroy(rb_vm_t *vm);
 VALUE rb_vm_call(rb_thread_t *th, VALUE recv, VALUE id, int argc,
@@ -854,11 +855,13 @@ int rb_autoloading_value(VALUE mod, ID id, VALUE* value);
 
 #define sysstack_error GET_VM()->special_exceptions[ruby_error_sysstack]
 
-#define CHECK_VM_STACK_OVERFLOW(cfp, margin) do \
-  if ((VALUE *)((char *)(((VALUE *)(cfp)->sp) + (margin)) + sizeof(rb_control_frame_t)) >= ((VALUE *)(cfp))) { \
-      vm_stackoverflow(); \
-  } \
-while (0)
+#define CHECK_VM_STACK_OVERFLOW0(cfp, sp, margin) do { \
+    if ((VALUE *)((char *)((VALUE *)(sp) + (margin)) + sizeof(rb_control_frame_t)) >= ((VALUE *)(cfp))) { \
+	vm_stackoverflow(); \
+    } \
+} while (0)
+
+#define CHECK_VM_STACK_OVERFLOW(cfp, margin) CHECK_VM_STACK_OVERFLOW0((cfp), (cfp)->sp, margin)
 
 /* for thread */
 
