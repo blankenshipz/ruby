@@ -627,14 +627,13 @@ dir_each(VALUE dir)
 	size_t namlen = NAMLEN(dp);
 	VALUE path;
 #if HAVE_HFS
-	VALUE utf8str = Qnil;
 	if (hfs_p && has_nonascii(name, namlen) &&
-	    !NIL_P(utf8str = rb_str_normalize_ospath(name, namlen))) {
-	    RSTRING_GETMEM(utf8str, name, namlen);
+	    !NIL_P(path = rb_str_normalize_ospath(name, namlen))) {
+	    path = rb_external_str_with_enc(path, dirp->enc);
 	}
+	else
 #endif
 	path = rb_external_str_new_with_enc(name, namlen, dirp->enc);
-	IF_HAVE_HFS(if (!NIL_P(utf8str)) rb_str_resize(utf8str, 0));
 	rb_yield(path);
 	if (dirp->dir == NULL) dir_closed();
     }
@@ -1407,12 +1406,20 @@ glob_helper(
 	    enum answer new_isdir = UNKNOWN;
 	    const char *name;
 	    size_t namlen;
+	    int dotfile = 0;
 	    IF_HAVE_HFS(VALUE utf8str = Qnil);
 
 	    if (recursive && dp->d_name[0] == '.') {
-		/* always skip current and parent directories not to recurse infinitely */
-		if (!dp->d_name[1]) continue;
-		if (dp->d_name[1] == '.' && !dp->d_name[2]) continue;
+		++dotfile;
+		if (!dp->d_name[1]) {
+		    /* unless DOTMATCH, skip current directories not to recurse infinitely */
+		    if (!(flags & FNM_DOTMATCH)) continue;
+		    ++dotfile;
+		}
+		else if (dp->d_name[1] == '.' && !dp->d_name[2]) {
+		    /* always skip parent directories not to recurse infinitely */
+		    continue;
+		}
 	    }
 
 	    name = dp->d_name;
@@ -1431,7 +1438,7 @@ glob_helper(
 		break;
 	    }
 	    name = buf + pathlen + (dirsep != 0);
-	    if (recursive && ((flags & FNM_DOTMATCH) || dp->d_name[0] != '.')) {
+	    if (recursive && dotfile < ((flags & FNM_DOTMATCH) ? 2 : 1)) {
 		/* RECURSIVE never match dot files unless FNM_DOTMATCH is set */
 #ifndef _WIN32
 		if (do_lstat(buf, &st, flags) == 0)
@@ -1793,49 +1800,56 @@ dir_s_aref(int argc, VALUE *argv, VALUE obj)
 
 /*
  *  call-seq:
- *     Dir.glob( pattern, [flags] ) -> array
- *     Dir.glob( pattern, [flags] ) {| filename | block }  -> nil
+ *     Dir.glob( pattern, [flags] ) -> matches
+ *     Dir.glob( pattern, [flags] ) { |filename| block }  -> nil
  *
- *  Returns the filenames found by expanding <i>pattern</i> which is
- *  an +Array+ of the patterns or the pattern +String+, either as an
- *  <i>array</i> or as parameters to the block. Note that this pattern
- *  is not a regexp (it's closer to a shell glob). See
- *  <code>File::fnmatch</code> for the meaning of the <i>flags</i>
- *  parameter. Note that case sensitivity depends on your system (so
- *  <code>File::FNM_CASEFOLD</code> is ignored), as does the order
- *  in which the results are returned.
+ *  Expands +pattern+, which is an Array of patterns or a pattern String, and
+ *  returns the results as +matches+ or as arguments given to the block.
  *
- *  <code>*</code>::        Matches any file. Can be restricted by
- *                          other values in the glob. <code>*</code>
- *                          will match all files; <code>c*</code> will
- *                          match all files beginning with
- *                          <code>c</code>; <code>*c</code> will match
- *                          all files ending with <code>c</code>; and
- *                          <code>\*c\*</code> will match all files that
- *                          have <code>c</code> in them (including at
- *                          the beginning or end). Equivalent to
- *                          <code>/ .* /x</code> in regexp. Note, this
- *                          will not match Unix-like hidden files (dotfiles).
- *                          In order to include those in the match results,
- *                          you must use something like <code>"{*,.*}"</code>.
- *  <code>**</code>::       Matches directories recursively.
- *  <code>?</code>::        Matches any one character. Equivalent to
- *                          <code>/.{1}/</code> in regexp.
- *  <code>[set]</code>::    Matches any one character in +set+.
- *                          Behaves exactly like character sets in
- *                          Regexp, including set negation
- *                          (<code>[^a-z]</code>).
- *  <code>{p,q}</code>::    Matches either literal <code>p</code> or
- *                          literal <code>q</code>. Matching literals
- *                          may be more than one character in length.
- *                          More than two literals may be specified.
- *                          Equivalent to pattern alternation in
- *                          regexp.
- *  <code> \\ </code>::     Escapes the next metacharacter.
- *                          Note that this means you cannot use backslash
- *                          in windows as part of a glob,
- *                          i.e. <code>Dir["c:\\foo*"]</code> will not work,
- *                          use <code>Dir["c:/foo*"]</code> instead.
+ *  Note that this pattern is not a regexp, it's closer to a shell glob.  See
+ *  File::fnmatch for the meaning of the +flags+ parameter.  Note that case
+ *  sensitivity depends on your system (so File::FNM_CASEFOLD is ignored), as
+ *  does the order in which the results are returned.
+ *
+ *  <code>*</code>::
+ *    Matches any file. Can be restricted by other values in the glob.
+ *    Equivalent to <code>/ .* /x</code> in regexp.
+ *
+ *    <code>*</code>::     Matches all files
+ *    <code>c*</code>::    Matches all files beginning with <code>c</code>
+ *    <code>*c</code>::    Matches all files ending with <code>c</code>
+ *    <code>\*c\*</code>:: Match all files that have <code>c</code> in them
+ *                         (including at the beginning or end).
+ *
+ *    Note, this will not match Unix-like hidden files (dotfiles).  In order
+ *    to include those in the match results, you must use the
+ *    File::FNM_DOTMATCH flag or something like <code>"{*,.*}"</code>.
+ *
+ *  <code>**</code>::
+ *    Matches directories recursively.
+ *
+ *  <code>?</code>::
+ *    Matches any one character. Equivalent to <code>/.{1}/</code> in regexp.
+ *
+ *  <code>[set]</code>::
+ *    Matches any one character in +set+.  Behaves exactly like character sets
+ *    in Regexp, including set negation (<code>[^a-z]</code>).
+ *
+ *  <code>{p,q}</code>::
+ *    Matches either literal <code>p</code> or literal <code>q</code>.
+ *    Equivalent to pattern alternation in regexp.
+ *
+ *    Matching literals may be more than one character in length.  More than
+ *    two literals may be specified.
+ *
+ *  <code> \\ </code>::
+ *    Escapes the next metacharacter.
+ *
+ *    Note that this means you cannot use backslash on windows as part of a
+ *    glob, i.e.  <code>Dir["c:\\foo*"]</code> will not work, use
+ *    <code>Dir["c:/foo*"]</code> instead.
+ *
+ *  Examples:
  *
  *     Dir["config.?"]                     #=> ["config.h"]
  *     Dir.glob("config.?")                #=> ["config.h"]
@@ -1984,37 +1998,44 @@ fnmatch_brace(const char *pattern, VALUE val, void *enc)
  *     File.fnmatch( pattern, path, [flags] ) -> (true or false)
  *     File.fnmatch?( pattern, path, [flags] ) -> (true or false)
  *
- *  Returns true if <i>path</i> matches against <i>pattern</i> The
- *  pattern is not a regular expression; instead it follows rules
- *  similar to shell filename globbing. It may contain the following
- *  metacharacters:
+ *  Returns true if +path+ matches against +pattern+.  The pattern is not a
+ *  regular expression; instead it follows rules similar to shell filename
+ *  globbing.  It may contain the following metacharacters:
  *
- *  <code>*</code>::        Matches any file. Can be restricted by
- *                          other values in the glob. <code>*</code>
- *                          will match all files; <code>c*</code> will
- *                          match all files beginning with
- *                          <code>c</code>; <code>*c</code> will match
- *                          all files ending with <code>c</code>; and
- *                          <code>\*c*</code> will match all files that
- *                          have <code>c</code> in them (including at
- *                          the beginning or end). Equivalent to
- *                          <code>/ .* /x</code> in regexp.
- *  <code>**</code>::       Matches directories recursively or files
- *                          expansively.
- *  <code>?</code>::        Matches any one character. Equivalent to
- *                          <code>/.{1}/</code> in regexp.
- *  <code>[set]</code>::    Matches any one character in +set+.
- *                          Behaves exactly like character sets in
- *                          Regexp, including set negation
- *                          (<code>[^a-z]</code>).
- *  <code> \ </code>::      Escapes the next metacharacter.
- *  <code>{a,b}</code>::    Matches pattern a and pattern b if
- *                          <code>File::FNM_EXTGLOB</code> flag is enabled.
- *                          Behaves like a Regexp union (<code>(?:a|b)</code>).
+ *  <code>*</code>::
+ *    Matches any file. Can be restricted by other values in the glob.
+ *    Equivalent to <code>/ .* /x</code> in regexp.
  *
- *  <i>flags</i> is a bitwise OR of the <code>FNM_xxx</code>
- *  parameters. The same glob pattern and flags are used by
- *  <code>Dir::glob</code>.
+ *    <code>*</code>::    Matches all files regular files
+ *    <code>c*</code>::   Matches all files beginning with <code>c</code>
+ *    <code>*c</code>::   Matches all files ending with <code>c</code>
+ *    <code>\*c*</code>:: Matches all files that have <code>c</code> in them
+ *                        (including at the beginning or end).
+ *
+ *    To match hidden files (that start with a <code>.</code> set the
+ *    File::FNM_DOTMATCH flag.
+ *
+ *  <code>**</code>::
+ *    Matches directories recursively or files expansively.
+ *
+ *  <code>?</code>::
+ *    Matches any one character. Equivalent to <code>/.{1}/</code> in regexp.
+ *
+ *  <code>[set]</code>::
+ *    Matches any one character in +set+.  Behaves exactly like character sets
+ *    in Regexp, including set negation (<code>[^a-z]</code>).
+ *
+ *  <code> \ </code>::
+ *    Escapes the next metacharacter.
+ *
+ *  <code>{a,b}</code>::
+ *    Matches pattern a and pattern b if File::FNM_EXTGLOB flag is enabled.
+ *    Behaves like a Regexp union (<code>(?:a|b)</code>).
+ *
+ *  +flags+ is a bitwise OR of the <code>FNM_XXX</code> constants. The same
+ *  glob pattern and flags are used by Dir::glob.
+ *
+ *  Examples:
  *
  *     File.fnmatch('cat',       'cat')        #=> true  # match entire string
  *     File.fnmatch('cat',       'category')   #=> false # only match partial string
@@ -2144,6 +2165,13 @@ rb_file_directory_p()
 }
 #endif
 
+static VALUE
+rb_dir_exists_p(VALUE obj, VALUE fname)
+{
+    rb_warning("Dir.exists? is a deprecated name, use Dir.exist? instead");
+    return rb_file_directory_p(obj, fname);
+}
+
 /*
  *  Objects of class <code>Dir</code> are directory streams representing
  *  directories in the underlying file system. They provide a variety of
@@ -2193,15 +2221,42 @@ Init_Dir(void)
     rb_define_singleton_method(rb_cDir,"glob", dir_s_glob, -1);
     rb_define_singleton_method(rb_cDir,"[]", dir_s_aref, -1);
     rb_define_singleton_method(rb_cDir,"exist?", rb_file_directory_p, 1);
-    rb_define_singleton_method(rb_cDir,"exists?", rb_file_directory_p, 1);
+    rb_define_singleton_method(rb_cDir,"exists?", rb_dir_exists_p, 1);
 
     rb_define_singleton_method(rb_cFile,"fnmatch", file_s_fnmatch, -1);
     rb_define_singleton_method(rb_cFile,"fnmatch?", file_s_fnmatch, -1);
 
+    /*  Document-const: File::Constants::FNM_NOESCAPE
+     *
+     *  Disables escapes in File.fnmatch and Dir.glob patterns
+     */
     rb_file_const("FNM_NOESCAPE", INT2FIX(FNM_NOESCAPE));
+
+    /*  Document-const: File::Constants::FNM_PATHNAME
+     *
+     *  Wildcards in File.fnmatch and Dir.glob patterns do not match directory
+     *  separators
+     */
     rb_file_const("FNM_PATHNAME", INT2FIX(FNM_PATHNAME));
+
+    /*  Document-const: File::Constants::FNM_DOTMATCH
+     *
+     *  The '*' wildcard matches filenames starting with "." in File.fnmatch
+     *  and Dir.glob patterns
+     */
     rb_file_const("FNM_DOTMATCH", INT2FIX(FNM_DOTMATCH));
+
+    /*  Document-const: File::Constants::FNM_CASEFOLD
+     *
+     *  Makes File.fnmatch patterns case insensitive (but not Dir.glob
+     *  patterns).
+     */
     rb_file_const("FNM_CASEFOLD", INT2FIX(FNM_CASEFOLD));
+
+    /*  Document-const: File::Constants::FNM_EXTGLOB
+     *
+     *  Allows file globbing through "{a,b}" in File.fnmatch patterns.
+     */
     rb_file_const("FNM_EXTGLOB", INT2FIX(FNM_EXTGLOB));
     rb_file_const("FNM_SYSCASE", INT2FIX(FNM_SYSCASE));
 }

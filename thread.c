@@ -396,6 +396,8 @@ typedef struct rb_mutex_struct
 } rb_mutex_t;
 
 static void rb_mutex_abandon_all(rb_mutex_t *mutexes);
+static void rb_mutex_abandon_keeping_mutexes(rb_thread_t *th);
+static void rb_mutex_abandon_locking_mutex(rb_thread_t *th);
 static const char* rb_mutex_unlock_th(rb_mutex_t *mutex, rb_thread_t volatile *th);
 
 void
@@ -528,7 +530,7 @@ thread_start_func_2(rb_thread_t *th, VALUE *stack_start, VALUE *register_stack_s
 		    th->root_lep = rb_vm_ep_local_ep(proc->block.ep);
 		    th->root_svar = Qnil;
 		    EXEC_EVENT_HOOK(th, RUBY_EVENT_THREAD_BEGIN, th->self, 0, 0, Qundef);
-		    th->value = rb_vm_invoke_proc(th, proc, (int)RARRAY_LEN(args), RARRAY_RAWPTR(args), 0);
+		    th->value = rb_vm_invoke_proc(th, proc, (int)RARRAY_LEN(args), RARRAY_CONST_PTR(args), 0);
 		    EXEC_EVENT_HOOK(th, RUBY_EVENT_THREAD_END, th->self, 0, 0, Qundef);
 		}
 		else {
@@ -540,10 +542,6 @@ thread_start_func_2(rb_thread_t *th, VALUE *stack_start, VALUE *register_stack_s
 	    errinfo = th->errinfo;
 	    if (state == TAG_FATAL) {
 		/* fatal error within this thread, need to stop whole script */
-	    }
-	    else if (th->safe_level >= 4) {
-		/* Ignore it. Main thread shouldn't be harmed from untrusted thread. */
-		errinfo = Qnil;
 	    }
 	    else if (rb_obj_is_kind_of(errinfo, rb_eSystemExit)) {
 		/* exit on main_thread. */
@@ -1062,7 +1060,7 @@ rb_thread_sleep_forever(void)
     sleep_forever(GET_THREAD(), 0, 1);
 }
 
-static void
+void
 rb_thread_sleep_deadly(void)
 {
     thread_debug("rb_thread_sleep_deadly\n");
@@ -1549,10 +1547,10 @@ rb_threadptr_pending_interrupt_check_mask(rb_thread_t *th, VALUE err)
 {
     VALUE mask;
     long mask_stack_len = RARRAY_LEN(th->pending_interrupt_mask_stack);
-    const VALUE *mask_stack = RARRAY_RAWPTR(th->pending_interrupt_mask_stack);
+    const VALUE *mask_stack = RARRAY_CONST_PTR(th->pending_interrupt_mask_stack);
     VALUE ancestors = rb_mod_ancestors(err); /* TODO: GC guard */
     long ancestors_len = RARRAY_LEN(ancestors);
-    const VALUE *ancestors_ptr = RARRAY_RAWPTR(ancestors);
+    const VALUE *ancestors_ptr = RARRAY_CONST_PTR(ancestors);
     int i, j;
 
     for (i=0; i<mask_stack_len; i++) {
@@ -1926,33 +1924,41 @@ rb_threadptr_to_kill(rb_thread_t *th)
     TH_JUMP_TAG(th, TAG_FATAL);
 }
 
+static inline rb_atomic_t
+threadptr_get_interrupts(rb_thread_t *th)
+{
+    rb_atomic_t interrupt;
+    rb_atomic_t old;
+
+    do {
+	interrupt = th->interrupt_flag;
+	old = ATOMIC_CAS(th->interrupt_flag, interrupt, interrupt & th->interrupt_mask);
+    } while (old != interrupt);
+    return interrupt & (rb_atomic_t)~th->interrupt_mask;
+}
+
 void
 rb_threadptr_execute_interrupts(rb_thread_t *th, int blocking_timing)
 {
+    rb_atomic_t interrupt;
+    int postponed_job_interrupt = 0;
+
     if (th->raised_flag) return;
 
-    while (1) {
-	rb_atomic_t interrupt;
-	rb_atomic_t old;
+    while ((interrupt = threadptr_get_interrupts(th)) != 0) {
 	int sig;
 	int timer_interrupt;
 	int pending_interrupt;
-	int postponed_job_interrupt;
 	int trap_interrupt;
-
-	do {
-	    interrupt = th->interrupt_flag;
-	    old = ATOMIC_CAS(th->interrupt_flag, interrupt, interrupt & th->interrupt_mask);
-	} while (old != interrupt);
-
-	interrupt &= (rb_atomic_t)~th->interrupt_mask;
-	if (!interrupt)
-	    return;
 
 	timer_interrupt = interrupt & TIMER_INTERRUPT_MASK;
 	pending_interrupt = interrupt & PENDING_INTERRUPT_MASK;
 	postponed_job_interrupt = interrupt & POSTPONED_JOB_INTERRUPT_MASK;
 	trap_interrupt = interrupt & TRAP_INTERRUPT_MASK;
+
+	if (postponed_job_interrupt) {
+	    rb_postponed_job_flush(th->vm);
+	}
 
 	/* signal handling */
 	if (trap_interrupt && (th == th->vm->main_thread)) {
@@ -1984,10 +1990,6 @@ rb_threadptr_execute_interrupts(rb_thread_t *th, int blocking_timing)
 		    th->status = THREAD_RUNNABLE;
 		rb_exc_raise(err);
 	    }
-	}
-
-	if (postponed_job_interrupt) {
-	    rb_postponed_job_flush(th->vm);
 	}
 
 	if (timer_interrupt) {
@@ -2176,8 +2178,6 @@ rb_thread_kill(VALUE thread)
 
     GetThreadPtr(thread, th);
 
-    if (th != GET_THREAD() && th->safe_level < 4) {
-    }
     if (th->to_kill || th->status == THREAD_KILLED) {
 	return thread;
     }
@@ -2741,9 +2741,6 @@ rb_thread_local_aref(VALUE thread, ID id)
     st_data_t val;
 
     GetThreadPtr(thread, th);
-    if (rb_safe_level() >= 4 && th != GET_THREAD()) {
-	rb_raise(rb_eSecurityError, "Insecure: thread locals");
-    }
     if (!th->local_storage) {
 	return Qnil;
     }
@@ -2827,9 +2824,6 @@ rb_thread_local_aset(VALUE thread, ID id, VALUE val)
     rb_thread_t *th;
     GetThreadPtr(thread, th);
 
-    if (rb_safe_level() >= 4 && th != GET_THREAD()) {
-	rb_raise(rb_eSecurityError, "Insecure: can't modify thread locals");
-    }
     if (OBJ_FROZEN(thread)) {
 	rb_error_frozen("thread locals");
     }
@@ -2898,14 +2892,7 @@ static VALUE
 rb_thread_variable_get(VALUE thread, VALUE key)
 {
     VALUE locals;
-    rb_thread_t *th;
     ID id = rb_check_id(&key);
-
-    GetThreadPtr(thread, th);
-
-    if (rb_safe_level() >= 4 && th != GET_THREAD()) {
-	rb_raise(rb_eSecurityError, "Insecure: can't access thread locals");
-    }
 
     if (!id) return Qnil;
     locals = rb_ivar_get(thread, id_locals);
@@ -2925,13 +2912,7 @@ static VALUE
 rb_thread_variable_set(VALUE thread, VALUE id, VALUE val)
 {
     VALUE locals;
-    rb_thread_t *th;
 
-    GetThreadPtr(thread, th);
-
-    if (rb_safe_level() >= 4 && th != GET_THREAD()) {
-	rb_raise(rb_eSecurityError, "Insecure: can't modify thread locals");
-    }
     if (OBJ_FROZEN(thread)) {
 	rb_error_frozen("thread locals");
     }
@@ -3917,10 +3898,8 @@ terminate_atfork_i(st_data_t key, st_data_t val, st_data_t current_th)
     GetThreadPtr(thval, th);
 
     if (th != (rb_thread_t *)current_th) {
-	if (th->keeping_mutexes) {
-	    rb_mutex_abandon_all(th->keeping_mutexes);
-	}
-	th->keeping_mutexes = NULL;
+	rb_mutex_abandon_keeping_mutexes(th);
+	rb_mutex_abandon_locking_mutex(th);
 	thread_cleanup_func(th, TRUE);
     }
     return ST_CONTINUE;
@@ -4179,8 +4158,6 @@ thgroup_add(VALUE group, VALUE thread)
 
 #define GetMutexPtr(obj, tobj) \
     TypedData_Get_Struct((obj), rb_mutex_t, &mutex_data_type, (tobj))
-
-static const char *rb_mutex_unlock_th(rb_mutex_t *mutex, rb_thread_t volatile *th);
 
 #define mutex_mark NULL
 
@@ -4506,15 +4483,32 @@ rb_mutex_unlock(VALUE self)
     rb_mutex_t *mutex;
     GetMutexPtr(self, mutex);
 
-    /* When running trap handler */
-    if (!mutex->allow_trap && GET_THREAD()->interrupt_mask & TRAP_INTERRUPT_MASK) {
-	rb_raise(rb_eThreadError, "can't be called from trap context");
-    }
-
     err = rb_mutex_unlock_th(mutex, GET_THREAD());
     if (err) rb_raise(rb_eThreadError, "%s", err);
 
     return self;
+}
+
+static void
+rb_mutex_abandon_keeping_mutexes(rb_thread_t *th)
+{
+    if (th->keeping_mutexes) {
+	rb_mutex_abandon_all(th->keeping_mutexes);
+    }
+    th->keeping_mutexes = NULL;
+}
+
+static void
+rb_mutex_abandon_locking_mutex(rb_thread_t *th)
+{
+    rb_mutex_t *mutex;
+
+    if (!th->locking_mutex) return;
+
+    GetMutexPtr(th->locking_mutex, mutex);
+    if (mutex->th == th)
+	rb_mutex_abandon_all(mutex);
+    th->locking_mutex = Qfalse;
 }
 
 static void
@@ -4961,6 +4955,18 @@ VALUE
 rb_exec_recursive_outer(VALUE (*func) (VALUE, VALUE, int), VALUE obj, VALUE arg)
 {
     return exec_recursive(func, obj, 0, arg, 1);
+}
+
+/*
+ * If recursion is detected on the current method, obj and paired_obj,
+ * the outermost func will be called with (obj, arg, Qtrue). All inner
+ * func will be short-circuited using throw.
+ */
+
+VALUE
+rb_exec_recursive_paired_outer(VALUE (*func) (VALUE, VALUE, int), VALUE obj, VALUE paired_obj, VALUE arg)
+{
+    return exec_recursive(func, obj, rb_obj_id(paired_obj), arg, 1);
 }
 
 /*

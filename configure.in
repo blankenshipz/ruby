@@ -645,6 +645,25 @@ else
   unset ac_c_werror_flag
 fi])
 
+RUBY_WERROR_FLAG([
+    AC_MSG_CHECKING([whether CFLAGS is valid])
+    AC_TRY_COMPILE([], [],
+	[AC_MSG_RESULT(yes)],
+	[
+	AC_MSG_RESULT(no)
+	AC_MSG_ERROR([something wrong with CFLAGS="$CFLAGS"])
+	]
+    )
+    AC_MSG_CHECKING([whether LDFLAGS is valid])
+    AC_TRY_LINK([], [],
+	[AC_MSG_RESULT(yes)],
+	[
+	AC_MSG_RESULT(no)
+	AC_MSG_ERROR([something wrong with LDFLAGS="$LDFLAGS"])
+	]
+    )
+])
+
 AC_DEFUN(RUBY_TRY_CFLAGS, [
     AC_MSG_CHECKING([whether ]$1[ is accepted as CFLAGS])
     RUBY_WERROR_FLAG([
@@ -964,6 +983,8 @@ main()
 		ac_cv_func_gmtime_r=yes
 		rb_cv_large_fd_select=yes
 		ac_cv_type_struct_timeval=yes
+                ac_cv_func_clock_gettime=yes
+                ac_cv_func_clock_getres=yes
 		AC_CHECK_TYPE([NET_LUID], [], [],
 			      [@%:@include <windows.h>
 		  	      @%:@include <iphlpapi.h>])
@@ -1047,6 +1068,18 @@ AC_CHECK_HEADERS( \
   atomic.h \
   setjmpex.h
 )
+
+AC_ARG_WITH([gmp],
+  [AS_HELP_STRING([--without-gmp],
+    [disable GNU GMP to accelerate Bignum operations])],
+  [],
+  [with_gmp=yes])
+AS_IF([test "x$with_gmp" != xno],
+  [AC_CHECK_HEADERS(gmp.h)
+   AS_IF([test "x$ac_cv_header_gmp_h" != xno],
+     AC_CHECK_LIB([gmp], [__gmpz_init]))
+   with_gmp="$ac_cv_lib_gmp___gmpz_init"
+   AS_IF([test -z "$with_gmp"], [with_gmp=no])])
 
 dnl check for large file stuff
 mv confdefs.h confdefs1.h
@@ -1167,6 +1200,7 @@ RUBY_CHECK_SIZEOF(void*, [int long "long long"], [ILP LP LLP])
 RUBY_CHECK_SIZEOF(float)
 RUBY_CHECK_SIZEOF(double)
 RUBY_CHECK_SIZEOF(time_t, [long "long long"], [], [@%:@include <time.h>])
+RUBY_CHECK_SIZEOF(clock_t, [], [], [@%:@include <time.h>])
 
 AC_DEFUN([RUBY_CHECK_PRINTF_PREFIX], [
 AC_CACHE_CHECK([for printf prefix for $1], [rb_cv_pri_prefix_]AS_TR_SH($1),[
@@ -1198,6 +1232,11 @@ elif test "x$ac_cv_type___int64" = xyes; then
     RUBY_CHECK_PRINTF_PREFIX(__int64, ll I64, LL)
 fi
 
+dnl RUBY_CHECK_SIZEOF [typename] [if-signed] [if-unsigned] [included]
+AC_DEFUN([RUBY_CHECK_SIGNEDNESS], [dnl
+    AC_COMPILE_IFELSE([AC_LANG_BOOL_COMPILE_TRY([AC_INCLUDES_DEFAULT([$4])], [($1)-1 > 0])],
+		      [$3], [$2])])
+
 dnl RUBY_REPLACE_TYPE [typename] [default type] [macro type] [included]
 AC_DEFUN([RUBY_REPLACE_TYPE], [dnl
     AC_CHECK_TYPE([$1],
@@ -1210,10 +1249,7 @@ AC_DEFUN([RUBY_REPLACE_TYPE], [dnl
 	  [*" signed "*], [ ],
 	  [*" unsigned "*], [
 	    u=U],
-	  [
-	    AC_COMPILE_IFELSE(
-		[AC_LANG_BOOL_COMPILE_TRY([AC_INCLUDES_DEFAULT([$4])], [($n)-1 > 0])],
-		[u=U])])
+	  [RUBY_CHECK_SIGNEDNESS($n, [], [u=U], [$4])])
 	if test x"$t" = x; then
 	    for t in "long long" long int short; do
 		test -n "$u" && t="unsigned $t"
@@ -1499,6 +1535,8 @@ fi
 
 
 AC_TYPE_SIZE_T
+RUBY_CHECK_SIGNEDNESS(size_t, [AC_MSG_ERROR(size_t is signed)], [],
+		      [@%:@include <sys/types.h>])
 RUBY_CHECK_SIZEOF(size_t, [int long void*], [], [@%:@include <sys/types.h>])
 RUBY_CHECK_SIZEOF(ptrdiff_t, size_t, [], [@%:@include <stddef.h>])
 RUBY_CHECK_PRINTF_PREFIX(size_t, z)
@@ -1728,6 +1766,7 @@ AS_CASE(["$target_os"],
 [aix* | k*bsd*-gnu | kopensolaris*-gnu | linux* | darwin*], [AC_DEFINE(SPT_TYPE,SPT_REUSEARGV)],
 [hpux*], [AC_DEFINE(SPT_TYPE,SPT_PSTAT) ],
 [])
+AC_CHECK_HEADERS(sys/pstat.h)
 
 
 AC_CACHE_CHECK(for signbit, rb_cv_have_signbit,
@@ -1860,9 +1899,11 @@ if test x"$ac_cv_func_clock_gettime" != xyes; then
     # glibc 2.17 moves clock_* functions from librt to the main C library.
     # http://sourceware.org/ml/libc-announce/2012/msg00001.html
     AC_CHECK_LIB(rt, clock_gettime)
-    unset ac_cv_func_clock_gettime
-    AC_CHECK_FUNCS(clock_gettime)
+    if test x"$ac_cv_lib_rt_clock_gettime" = xyes; then
+	AC_DEFINE(HAVE_CLOCK_GETTIME, 1)
+    fi
 fi
+AC_CHECK_FUNCS(clock_getres) # clock_getres should be tested after clock_gettime test including librt test.
 
 AC_CACHE_CHECK(for unsetenv returns a value, rb_cv_unsetenv_return_value,
   [AC_TRY_COMPILE([
@@ -2875,7 +2916,8 @@ if test x"$cross_compiling" = xyes; then
   AC_SUBST(XRUBY_RUBYLIBDIR)
   AC_SUBST(XRUBY_RUBYHDRDIR)
   PREP='$(arch)-fake.rb'
-  RUNRUBY='$(MINIRUBY) -I`cd $(srcdir)/lib; pwd`'
+  RUNRUBY_COMMAND='$(MINIRUBY) -I`cd $(srcdir)/lib; pwd`'
+  RUNRUBY='$(RUNRUBY_COMMAND)'
   XRUBY='$(MINIRUBY)'
   TEST_RUNNABLE=no
   CROSS_COMPILING=yes
@@ -2897,7 +2939,8 @@ else
   MINIRUBY='./miniruby$(EXEEXT) -I$(srcdir)/lib -I.'
   MINIRUBY="$MINIRUBY"' -I$(EXTOUT)/common'
   PREP='miniruby$(EXEEXT)'
-  RUNRUBY='$(MINIRUBY) $(srcdir)/tool/runruby.rb --extout=$(EXTOUT)'
+  RUNRUBY_COMMAND='$(MINIRUBY) $(srcdir)/tool/runruby.rb --extout=$(EXTOUT) $(RUNRUBYOPT)'
+  RUNRUBY='$(RUNRUBY_COMMAND) --'
   XRUBY='$(RUNRUBY)'
   TEST_RUNNABLE=yes
   CROSS_COMPILING=no
@@ -2907,6 +2950,7 @@ AC_SUBST(CROSS_COMPILING)
 AC_SUBST(MINIRUBY)
 AC_SUBST(BTESTRUBY)
 AC_SUBST(PREP)
+AC_SUBST(RUNRUBY_COMMAND)
 AC_SUBST(RUNRUBY)
 AC_SUBST(XRUBY)
 AC_SUBST(EXTOUT, [${EXTOUT=.ext}])
@@ -3312,6 +3356,10 @@ AS_CASE(["$target_os"],
     [nacl], [
 	FIRSTMAKEFILE=GNUmakefile:nacl/GNUmakefile.in
 	])
+
+AS_CASE(["$with_gmp: $SOLIBS "], [no:* | *' -lgmp '*|*' $(LIBS) '*], [],
+	[SOLIBS="-lgmp $SOLIBS"])
+
 MINIOBJS="$MINIDLNOBJ"
 
 AS_CASE(["$THREAD_MODEL"],
@@ -3482,7 +3530,9 @@ AC_SUBST(MINIOBJS)
 AC_SUBST(THREAD_MODEL)
 AC_SUBST(PLATFORM_DIR)
 
-MAKEFILES="Makefile `echo $FIRSTMAKEFILE | sed 's/:.*//'`"
+firstmf=`echo $FIRSTMAKEFILE | sed 's/:.*//'`
+firsttmpl=`echo $FIRSTMAKEFILE | sed 's/.*://'`
+MAKEFILES="Makefile $firstmf"
 MAKEFILES="`echo $MAKEFILES`"
 AC_SUBST(MAKEFILES)
 
@@ -3757,7 +3807,9 @@ AC_MSG_RESULT($PACKAGE library version = $ruby_version)
 
 AS_CASE([" $CPP "], [*" $CC "*], [CPP=`echo " $CPP " | sed "s| $CC |"' $(CC) |;s/^ *//;s/  *$//'`])
 
-AC_CONFIG_FILES($FIRSTMAKEFILE)
+if test x"$firstmf" != x; then
+    AC_CONFIG_FILES($firstmf:$firsttmpl, [], [firstmf="$firstmf" firsttmpl="$firsttmpl"])
+fi
 AC_CONFIG_FILES(Makefile, [
     tmpmk=confmk$$.tmp
     {

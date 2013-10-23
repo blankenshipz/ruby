@@ -71,6 +71,9 @@ static VALUE
 vm_invoke_proc(rb_thread_t *th, rb_proc_t *proc, VALUE self, VALUE defined_class,
 	       int argc, const VALUE *argv, const rb_block_t *blockptr);
 
+static vm_state_version_t ruby_vm_global_state_version = 1;
+static vm_state_version_t ruby_vm_sequence = 1;
+
 #include "vm_insnhelper.h"
 #include "vm_insnhelper.c"
 #include "vm_exec.h"
@@ -84,26 +87,24 @@ vm_invoke_proc(rb_thread_t *th, rb_proc_t *proc, VALUE self, VALUE defined_class
 #define BUFSIZE 0x100
 #define PROCDEBUG 0
 
+vm_state_version_t
+rb_next_class_sequence(void)
+{
+    return NEXT_CLASS_SEQUENCE();
+}
+
 VALUE rb_cRubyVM;
 VALUE rb_cThread;
 VALUE rb_cEnv;
 VALUE rb_mRubyVMFrozenCore;
 
 VALUE ruby_vm_const_missing_count = 0;
-char ruby_vm_redefined_flag[BOP_LAST_];
+short ruby_vm_redefined_flag[BOP_LAST_];
 rb_thread_t *ruby_current_thread = 0;
 rb_vm_t *ruby_current_vm = 0;
 rb_event_flag_t ruby_vm_event_flags;
 
 static void thread_free(void *ptr);
-
-void
-rb_vm_change_state(void)
-{
-    INC_VM_STATE_VERSION();
-}
-
-static void vm_clear_global_method_cache(void);
 
 static void
 vm_clear_all_inline_method_cache(void)
@@ -117,7 +118,6 @@ vm_clear_all_inline_method_cache(void)
 static void
 vm_clear_all_cache()
 {
-    vm_clear_global_method_cache();
     vm_clear_all_inline_method_cache();
     ruby_vm_global_state_version = 1;
 }
@@ -1016,6 +1016,7 @@ vm_redefinition_check_flag(VALUE klass)
     if (klass == rb_cBignum) return BIGNUM_REDEFINED_OP_FLAG;
     if (klass == rb_cSymbol) return SYMBOL_REDEFINED_OP_FLAG;
     if (klass == rb_cTime)   return TIME_REDEFINED_OP_FLAG;
+    if (klass == rb_cRegexp) return REGEXP_REDEFINED_OP_FLAG;
     return 0;
 }
 
@@ -1094,6 +1095,7 @@ vm_init_redefined_flag(void)
     OP(Size, SIZE), (C(Array), C(String), C(Hash));
     OP(EmptyP, EMPTY_P), (C(Array), C(String), C(Hash));
     OP(Succ, SUCC), (C(Fixnum), C(String), C(Time));
+    OP(EqTilde, MATCH), (C(Regexp), C(String));
 #undef C
 #undef OP
 }
@@ -1288,6 +1290,13 @@ vm_exec(rb_thread_t *th)
 			if (!catch_iseqval) {
 			    result = GET_THROWOBJ_VAL(err);
 			    th->errinfo = Qnil;
+
+			    switch (VM_FRAME_TYPE(cfp)) {
+			      case VM_FRAME_MAGIC_LAMBDA:
+				EXEC_EVENT_HOOK_AND_POP_FRAME(th, RUBY_EVENT_B_RETURN, th->cfp->self, 0, 0, Qnil);
+				break;
+			    }
+
 			    vm_pop_frame(th);
 			    goto finish_vme;
 			}
@@ -1433,6 +1442,7 @@ vm_exec(rb_thread_t *th)
 		EXEC_EVENT_HOOK_AND_POP_FRAME(th, RUBY_EVENT_RETURN, th->cfp->self, 0, 0, Qnil);
 		break;
 	      case VM_FRAME_MAGIC_BLOCK:
+	      case VM_FRAME_MAGIC_LAMBDA:
 		EXEC_EVENT_HOOK_AND_POP_FRAME(th, RUBY_EVENT_B_RETURN, th->cfp->self, 0, 0, Qnil);
 		break;
 	      case VM_FRAME_MAGIC_CLASS:
@@ -1601,6 +1611,7 @@ rb_vm_mark(void *ptr)
 	RUBY_MARK_UNLESS_NULL(vm->loaded_features_snapshot);
 	RUBY_MARK_UNLESS_NULL(vm->top_self);
 	RUBY_MARK_UNLESS_NULL(vm->coverages);
+	RUBY_MARK_UNLESS_NULL(vm->defined_module_hash);
 	rb_gc_mark_locations(vm->special_exceptions, vm->special_exceptions + ruby_special_error_count);
 
 	if (vm->loading_table) {
@@ -1622,6 +1633,17 @@ rb_vm_mark(void *ptr)
     }
 
     RUBY_MARK_LEAVE("vm");
+}
+
+
+int
+rb_vm_add_root_module(ID id, VALUE module)
+{
+    rb_vm_t *vm = GET_VM();
+    if (vm->defined_module_hash) {
+	rb_hash_aset(vm->defined_module_hash, ID2SYM(id), module);
+    }
+    return TRUE;
 }
 
 #define vm_free 0
@@ -2069,11 +2091,13 @@ vm_define_method(rb_thread_t *th, VALUE obj, ID id, VALUE iseqval,
     OBJ_WRITE(miseq->self, &miseq->klass, klass);
     miseq->defined_method_id = id;
     rb_add_method(klass, id, VM_METHOD_TYPE_ISEQ, miseq, noex);
+    rb_clear_cache_by_class(klass);
 
     if (!is_singleton && noex == NOEX_MODFUNC) {
-	rb_add_method(rb_singleton_class(klass), id, VM_METHOD_TYPE_ISEQ, miseq, NOEX_PUBLIC);
+	klass = rb_singleton_class(klass);
+	rb_add_method(klass, id, VM_METHOD_TYPE_ISEQ, miseq, NOEX_PUBLIC);
+	rb_clear_cache_by_class(klass);
     }
-    INC_VM_STATE_VERSION();
 }
 
 #define REWIND_CFP(expr) do { \
@@ -2122,34 +2146,16 @@ m_core_undef_method(VALUE self, VALUE cbase, VALUE sym)
 {
     REWIND_CFP({
 	rb_undef(cbase, SYM2ID(sym));
-	INC_VM_STATE_VERSION();
+	rb_clear_cache_by_class(cbase);
+	rb_clear_cache_by_class(self);
     });
     return Qnil;
 }
 
 static VALUE
-m_core_set_postexe(VALUE self, VALUE iseqval)
+m_core_set_postexe(VALUE self)
 {
-    REWIND_CFP({
-	rb_iseq_t *blockiseq;
-	rb_block_t *blockptr;
-	rb_thread_t *th = GET_THREAD();
-	rb_control_frame_t *cfp = rb_vm_get_ruby_level_next_cfp(th, th->cfp);
-	VALUE proc;
-
-	if (cfp == 0) {
-	    rb_bug("m_core_set_postexe: unreachable");
-	}
-
-	GetISeqPtr(iseqval, blockiseq);
-
-	blockptr = RUBY_VM_GET_BLOCK_PTR_IN_CFP(cfp);
-	blockptr->iseq = blockiseq;
-	blockptr->proc = 0;
-
-	proc = rb_vm_make_proc(th, blockptr, rb_cProc);
-	rb_set_end_proc(rb_call_end_proc, proc);
-    });
+    rb_set_end_proc(rb_call_end_proc, rb_block_proc());
     return Qnil;
 }
 
@@ -2215,11 +2221,22 @@ kwmerge_i(VALUE key, VALUE value, VALUE hash)
     return ST_CONTINUE;
 }
 
-static VALUE
-m_core_hash_merge_kwd(VALUE recv, VALUE hash, VALUE kw)
+static int
+kwcheck_i(VALUE key, VALUE value, VALUE hash)
 {
+    if (!SYMBOL_P(key)) Check_Type(key, T_SYMBOL);
+    return ST_CONTINUE;
+}
+
+static VALUE
+m_core_hash_merge_kwd(int argc, VALUE *argv, VALUE recv)
+{
+    VALUE hash, kw;
+    rb_check_arity(argc, 1, 2);
+    hash = argv[0];
+    kw = argv[argc-1];
     kw = rb_convert_type(kw, T_HASH, "Hash", "to_hash");
-    rb_hash_foreach(kw, kwmerge_i, hash);
+    rb_hash_foreach(kw, argc < 2 ? kwcheck_i : kwmerge_i, hash);
     return hash;
 }
 
@@ -2291,14 +2308,17 @@ Init_VM(void)
     rb_define_method_id(klass, id_core_undef_method, m_core_undef_method, 2);
     rb_define_method_id(klass, id_core_define_method, m_core_define_method, 3);
     rb_define_method_id(klass, id_core_define_singleton_method, m_core_define_singleton_method, 3);
-    rb_define_method_id(klass, id_core_set_postexe, m_core_set_postexe, 1);
+    rb_define_method_id(klass, id_core_set_postexe, m_core_set_postexe, 0);
     rb_define_method_id(klass, id_core_hash_from_ary, m_core_hash_from_ary, 1);
     rb_define_method_id(klass, id_core_hash_merge_ary, m_core_hash_merge_ary, 2);
     rb_define_method_id(klass, id_core_hash_merge_ptr, m_core_hash_merge_ptr, -1);
-    rb_define_method_id(klass, id_core_hash_merge_kwd, m_core_hash_merge_kwd, 2);
+    rb_define_method_id(klass, id_core_hash_merge_kwd, m_core_hash_merge_kwd, -1);
     rb_define_method_id(klass, idProc, rb_block_proc, 0);
     rb_define_method_id(klass, idLambda, rb_block_lambda, 0);
     rb_obj_freeze(fcore);
+    RBASIC_CLEAR_CLASS(klass);
+    RCLASS_SET_SUPER(klass, 0);
+    rb_obj_freeze(klass);
     rb_gc_register_mark_object(fcore);
     rb_mRubyVMFrozenCore = fcore;
 
@@ -2597,6 +2617,7 @@ Init_BareVM(void)
     th->vm = vm;
     th_init(th, 0);
     ruby_thread_init_stack(th);
+    vm->defined_module_hash = rb_hash_new();
 }
 
 /* top self */
@@ -2622,7 +2643,7 @@ Init_top_self(void)
     rb_define_singleton_method(rb_vm_top_self(), "to_s", main_to_s, 0);
     rb_define_alias(rb_singleton_class(rb_vm_top_self()), "inspect", "to_s");
 
-    /* initialize mark object array */
+    /* initialize mark object array, hash */
     vm->mark_object_ary = rb_ary_tmp_new(1);
 }
 

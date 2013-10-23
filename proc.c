@@ -752,7 +752,7 @@ rb_proc_call(VALUE self, VALUE args)
     VALUE vret;
     rb_proc_t *proc;
     GetProcPtr(self, proc);
-    vret = rb_vm_invoke_proc(GET_THREAD(), proc, check_argc(RARRAY_LEN(args)), RARRAY_RAWPTR(args), 0);
+    vret = rb_vm_invoke_proc(GET_THREAD(), proc, check_argc(RARRAY_LEN(args)), RARRAY_CONST_PTR(args), 0);
     RB_GC_GUARD(self);
     RB_GC_GUARD(args);
     return vret;
@@ -924,7 +924,7 @@ iseq_location(rb_iseq_t *iseq)
     if (!iseq) return Qnil;
     loc[0] = iseq->location.path;
     if (iseq->line_info_table) {
-	loc[1] = INT2FIX(rb_iseq_first_lineno(iseq));
+	loc[1] = rb_iseq_first_lineno(iseq->self);
     }
     else {
 	loc[1] = Qnil;
@@ -1038,7 +1038,7 @@ proc_to_s(VALUE self)
 	int first_lineno = 0;
 
 	if (iseq->line_info_table) {
-	    first_lineno = rb_iseq_first_lineno(iseq);
+	    first_lineno = FIX2INT(rb_iseq_first_lineno(iseq->self));
 	}
 	str = rb_sprintf("#<%s:%p@%"PRIsVALUE":%d%s>", cname, (void *)self,
 			 iseq->location.path, first_lineno, is_lambda);
@@ -1125,7 +1125,6 @@ mnew_from_me(rb_method_entry_t *me, VALUE defined_class, VALUE klass,
     VALUE rclass = klass;
     ID rid = id;
     struct METHOD *data;
-    rb_method_entry_t meb;
     rb_method_definition_t *def = 0;
     rb_method_flag_t flag = NOEX_UNDEF;
 
@@ -1136,18 +1135,7 @@ mnew_from_me(rb_method_entry_t *me, VALUE defined_class, VALUE klass,
 
 	if (obj != Qundef && !rb_method_basic_definition_p(klass, rmiss)) {
 	    if (RTEST(rb_funcall(obj, rmiss, 2, sym, scope ? Qfalse : Qtrue))) {
-		def = ALLOC(rb_method_definition_t);
-		def->type = VM_METHOD_TYPE_MISSING;
-		def->original_id = id;
-		def->alias_count = 0;
-
-		meb.flag = 0;
-		meb.mark = 0;
-		meb.called_id = id;
-		meb.klass = klass;
-		meb.def = def;
-		me = &meb;
-		def = 0;
+		me = 0;
 
 		goto gen_method;
 	    }
@@ -1163,10 +1151,10 @@ mnew_from_me(rb_method_entry_t *me, VALUE defined_class, VALUE klass,
 		case NOEX_PRIVATE: v = "private"; break;
 		case NOEX_PROTECTED: v = "protected"; break;
 	    }
-	    rb_name_error(id, "method `%s' for %s `%s' is %s",
+	    rb_name_error(id, "method `%s' for %s `% "PRIsVALUE"' is %s",
 			  rb_id2name(id),
 			  (RB_TYPE_P(klass, T_MODULE)) ? "module" : "class",
-			  rb_class2name(klass),
+			  rb_class_name(klass),
 			  v);
 	}
     }
@@ -1196,9 +1184,27 @@ mnew_from_me(rb_method_entry_t *me, VALUE defined_class, VALUE klass,
     data->defined_class = defined_class;
     data->id = rid;
     data->me = ALLOC(rb_method_entry_t);
-    *data->me = *me;
-    data->me->def->alias_count++;
+    if (me) {
+	*data->me = *me;
+    }
+    else {
+	me = data->me;
+	me->flag = 0;
+	me->mark = 0;
+	me->called_id = id;
+	me->klass = klass;
+	me->def = 0;
+
+	def = ALLOC(rb_method_definition_t);
+	me->def = def;
+
+	def->type = VM_METHOD_TYPE_MISSING;
+	def->original_id = id;
+	def->alias_count = 0;
+
+    }
     data->ume = ALLOC(struct unlinked_method_entry_list_entry);
+    data->me->def->alias_count++;
 
     OBJ_INFECT(method, klass);
 
@@ -1569,8 +1575,8 @@ rb_mod_public_instance_method(VALUE mod, VALUE vid)
 
 /*
  *  call-seq:
- *     define_method(symbol, method)     -> new_method
- *     define_method(symbol) { block }   -> proc
+ *     define_method(symbol, method)     -> symbol
+ *     define_method(symbol) { block }   -> symbol
  *
  *  Defines an instance method in the receiver. The _method_
  *  parameter can be a +Proc+, a +Method+ or an +UnboundMethod+ object.
@@ -1637,8 +1643,8 @@ rb_mod_define_method(int argc, VALUE *argv, VALUE mod)
 	    }
 	    else {
 		rb_raise(rb_eTypeError,
-			 "bind argument must be a subclass of %s",
-			 rb_class2name(rclass));
+			 "bind argument must be a subclass of % "PRIsVALUE,
+			 rb_class_name(rclass));
 	    }
 	}
 	rb_method_entry_set(mod, id, method->me, noex);
@@ -1667,7 +1673,7 @@ rb_mod_define_method(int argc, VALUE *argv, VALUE mod)
 	rb_raise(rb_eTypeError, "wrong argument type (expected Proc/Method)");
     }
 
-    return body;
+    return ID2SYM(id);
 }
 
 /*
@@ -1918,18 +1924,20 @@ static VALUE
 umethod_bind(VALUE method, VALUE recv)
 {
     struct METHOD *data, *bound;
+    VALUE methclass;
 
     TypedData_Get_Struct(method, struct METHOD, &method_data_type, data);
 
-    if (!RB_TYPE_P(data->rclass, T_MODULE) &&
-	data->rclass != CLASS_OF(recv) && !rb_obj_is_kind_of(recv, data->rclass)) {
-	if (FL_TEST(data->rclass, FL_SINGLETON)) {
+    methclass = data->rclass;
+    if (!RB_TYPE_P(methclass, T_MODULE) &&
+	methclass != CLASS_OF(recv) && !rb_obj_is_kind_of(recv, methclass)) {
+	if (FL_TEST(methclass, FL_SINGLETON)) {
 	    rb_raise(rb_eTypeError,
 		     "singleton method called for a different object");
 	}
 	else {
-	    rb_raise(rb_eTypeError, "bind argument must be an instance of %s",
-		     rb_class2name(data->rclass));
+	    rb_raise(rb_eTypeError, "bind argument must be an instance of % "PRIsVALUE,
+		     rb_class_name(methclass));
 	}
     }
 
@@ -2227,10 +2235,10 @@ method_inspect(VALUE method)
 	}
     }
     else {
-	rb_str_buf_cat2(str, rb_class2name(data->rclass));
+	rb_str_buf_append(str, rb_class_name(data->rclass));
 	if (data->rclass != data->me->klass) {
 	    rb_str_buf_cat2(str, "(");
-	    rb_str_buf_cat2(str, rb_class2name(data->me->klass));
+	    rb_str_buf_append(str, rb_class_name(data->me->klass));
 	    rb_str_buf_cat2(str, ")");
 	}
     }
@@ -2374,7 +2382,7 @@ proc_binding(VALUE self)
     bind->env = proc->envval;
     if (RUBY_VM_NORMAL_ISEQ_P(proc->block.iseq)) {
 	bind->path = proc->block.iseq->location.path;
-	bind->first_lineno = rb_iseq_first_lineno(proc->block.iseq);
+	bind->first_lineno = FIX2INT(rb_iseq_first_lineno(proc->block.iseq->self));
     }
     else {
 	bind->path = Qnil;
@@ -2421,7 +2429,7 @@ curry(VALUE dummy, VALUE args, int argc, VALUE *argv, VALUE passed_proc)
 	return arity;
     }
     else {
-	return rb_proc_call_with_block(proc, check_argc(RARRAY_LEN(passed)), RARRAY_RAWPTR(passed), passed_proc);
+	return rb_proc_call_with_block(proc, check_argc(RARRAY_LEN(passed)), RARRAY_CONST_PTR(passed), passed_proc);
     }
 }
 

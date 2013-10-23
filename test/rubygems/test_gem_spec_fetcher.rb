@@ -52,6 +52,24 @@ class TestGemSpecFetcher < Gem::TestCase
                   ['x',  Gem::Version.new(1),     'ruby']]
   end
 
+  def test_initialize_unwritable_home_dir
+    FileUtils.rmdir Gem.user_home
+
+    assert Gem::SpecFetcher.new
+  end
+
+  def test_initialize_unwritable_home_dir
+    skip 'chmod not supported' if Gem.win_platform?
+
+    FileUtils.chmod 0000, Gem.user_home
+
+    begin
+      assert Gem::SpecFetcher.new
+    ensure
+      FileUtils.chmod 0755, Gem.user_home
+    end
+  end
+
   def test_spec_for_dependency_all
     d = "#{@gem_repo}#{Gem::MARSHAL_SPEC_DIR}"
     @fetcher.data["#{d}#{@a1.spec_name}.rz"]    = util_zip(Marshal.dump(@a1))
@@ -168,7 +186,7 @@ class TestGemSpecFetcher < Gem::TestCase
     specs, _ = @sf.available_specs(:latest)
 
     assert_equal [@source], specs.keys
-    assert_equal @latest_specs, specs[@source].sort
+    assert_equal @latest_specs, specs[@source]
   end
 
   def test_available_specs_released
@@ -176,7 +194,7 @@ class TestGemSpecFetcher < Gem::TestCase
 
     assert_equal [@source], specs.keys
 
-    assert_equal @released, specs[@source].sort
+    assert_equal @released, specs[@source]
   end
 
   def test_available_specs_complete
@@ -184,9 +202,9 @@ class TestGemSpecFetcher < Gem::TestCase
 
     assert_equal [@source], specs.keys
 
-    comp = @prerelease_specs + @released
+    expected = (@prerelease_specs + @released).sort
 
-    assert_equal comp.sort, specs[@source].sort
+    assert_equal expected, specs[@source]
   end
 
   def test_available_specs_complete_handles_no_prerelease
@@ -197,11 +215,8 @@ class TestGemSpecFetcher < Gem::TestCase
 
     assert_equal [@source], specs.keys
 
-    comp = @released
-
-    assert_equal comp.sort, specs[@source].sort
+    assert_equal @released, specs[@source]
   end
-
 
   def test_available_specs_cache
     specs, _ = @sf.available_specs(:latest)
@@ -230,7 +245,7 @@ class TestGemSpecFetcher < Gem::TestCase
   def test_available_specs_prerelease
     specs, _ = @sf.available_specs(:prerelease)
 
-    assert_equal @prerelease_specs, specs[@source].sort
+    assert_equal @prerelease_specs, specs[@source]
   end
 
   def test_available_specs_with_bad_source

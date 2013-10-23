@@ -339,7 +339,7 @@ enumerator_initialize(int argc, VALUE *argv, VALUE obj)
 	rb_check_arity(argc, 0, 1);
 	recv = generator_init(generator_allocate(rb_cGenerator), rb_block_proc());
 	if (argc) {
-            if (NIL_P(argv[0]) || rb_obj_is_proc(argv[0]) ||
+            if (NIL_P(argv[0]) || rb_respond_to(argv[0], id_call) ||
                 (RB_TYPE_P(argv[0], T_FLOAT) && RFLOAT_VALUE(argv[0]) == INFINITY)) {
                 size = argv[0];
             }
@@ -434,10 +434,38 @@ enumerator_block_call(VALUE obj, rb_block_call_func *func, VALUE arg)
 
 /*
  * call-seq:
- *   enum.each {...}
+ *   enum.each { |elm| block }                    -> obj
+ *   enum.each                                    -> enum
+ *   enum.each(*appending_args) { |elm| block }   -> obj
+ *   enum.each(*appending_args)                   -> an_enumerator
  *
- * Iterates over the block according to how this Enumerable was constructed.
- * If no block is given, returns self.
+ * Iterates over the block according to how this Enumerator was constructed.
+ * If no block and no arguments are given, returns self.
+ *
+ * === Examples
+ *
+ *   "Hello, world!".scan(/\w+/)                     #=> ["Hello", "world"]
+ *   "Hello, world!".to_enum(:scan, /\w+/).to_a      #=> ["Hello", "world"]
+ *   "Hello, world!".to_enum(:scan).each(/\w+/).to_a #=> ["Hello", "world"]
+ *
+ *   obj = Object.new
+ *
+ *   def obj.each_arg(a, b=:b, *rest)
+ *     yield a
+ *     yield b
+ *     yield rest
+ *     :method_returned
+ *   end
+ *
+ *   enum = obj.to_enum :each_arg, :a, :x
+ *
+ *   enum.each.to_a                  #=> [:a, :x, []]
+ *   enum.each.equal?(enum)          #=> true
+ *   enum.each { |elm| elm }         #=> :method_returned
+ *
+ *   enum.each(:y, :z).to_a          #=> [:a, :x, [:y, :z]]
+ *   enum.each(:y, :z).equal?(enum)  #=> false
+ *   enum.each(:y, :z) { |elm| elm } #=> :method_returned
  *
  */
 static VALUE
@@ -447,6 +475,10 @@ enumerator_each(int argc, VALUE *argv, VALUE obj)
 	struct enumerator *e = enumerator_ptr(obj = rb_obj_dup(obj));
 	VALUE args = e->args;
 	if (args) {
+#if SIZEOF_INT < SIZEOF_LONG
+	    /* check int range overflow */
+	    rb_long2int(RARRAY_LEN(args) + argc);
+#endif
 	    args = rb_ary_dup(args);
 	    rb_ary_cat(args, argv, argc);
 	}
@@ -1003,16 +1035,19 @@ static VALUE
 enumerator_size(VALUE obj)
 {
     struct enumerator *e = enumerator_ptr(obj);
+    int argc = 0;
+    const VALUE *argv = NULL;
+    VALUE size;
 
     if (e->size_fn) {
 	return (*e->size_fn)(e->obj, e->args, obj);
     }
-    if (rb_obj_is_proc(e->size)) {
-        if (e->args)
-	    return rb_proc_call(e->size, e->args);
-        else
-            return rb_proc_call_with_block(e->size, 0, 0, Qnil);
+    if (e->args) {
+	argc = (int)RARRAY_LEN(e->args);
+	argv = RARRAY_CONST_PTR(e->args);
     }
+    size = rb_check_funcall(e->size, id_call, argc, argv);
+    if (size != Qundef) return size;
     return e->size;
 }
 

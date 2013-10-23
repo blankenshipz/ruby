@@ -560,6 +560,7 @@ module Gem
       super
       yield(self) if defined?(yield)
       self.executables ||= []
+      self.date ||= RUBY_RELEASE_DATE
     end
 
     def self.load(path)
@@ -573,6 +574,7 @@ module Gem
 Gem::Specification.new do |s|
   s.name = #{name.dump}
   s.version = #{version.dump}
+  s.date = #{date.dump}
   s.summary = #{summary.dump}
   s.description = #{description.dump}
   s.homepage = #{homepage.dump}
@@ -755,18 +757,23 @@ include FileUtils::NoWrite if $dryrun
 @fileutils_output = STDOUT
 @fileutils_label = ''
 
+all = $install.delete(:all)
 $install << :local << :ext if $install.empty?
-$install.each do |inst|
+installs = $install.map do |inst|
   if !(procs = $install_procs[inst]) || procs.empty?
     next warn("unknown install target - #{inst}")
   end
-  procs.each do |block|
-    dir = Dir.pwd
-    begin
-      block.call
-    ensure
-      Dir.chdir(dir)
-    end
+  procs
+end
+installs.flatten!
+installs.uniq!
+installs |= $install_procs[:all] if all
+installs.each do |block|
+  dir = Dir.pwd
+  begin
+    block.call
+  ensure
+    Dir.chdir(dir)
   end
 end
 

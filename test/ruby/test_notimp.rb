@@ -23,17 +23,28 @@ class TestNotImplement < Test::Unit::TestCase
   def test_call_fork
     GC.start
     pid = nil
-    begin
+    ps =
+      case RUBY_PLATFORM
+      when /linux/ # assume Linux Distribution uses procps
+        proc {`ps -eLf #{pid}`}
+      when /freebsd/
+        proc {`ps -lH #{pid}`}
+      when /darwin/
+        proc {`ps -lM #{pid}`}
+      else
+        proc {`ps -l #{pid}`}
+      end
+    assert_nothing_raised(Timeout::Error, ps) do
       Timeout.timeout(5) {
         pid = fork {}
         Process.wait pid
         pid = nil
       }
-    rescue Timeout::Error
-      ps = `ps -l #{pid}`
+    end
+  ensure
+    if pid
       Process.kill(:KILL, pid)
       Process.wait pid
-      assert_equal nil,  pid, ps
     end
   end if Process.respond_to?(:fork)
 

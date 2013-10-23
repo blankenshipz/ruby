@@ -918,8 +918,8 @@ rb_obj_tainted(VALUE obj)
  *  You should only untaint a tainted object if your code has inspected it and
  *  determined that it is safe. To do so use #untaint
  *
- *  In $SAFE level 3 and 4, all objects are tainted and untrusted, any use of
- *  trust or taint methods will raise a SecurityError exception.
+ *  In $SAFE level 3, all newly created objects are tainted and you can't untaint
+ *  objects.
  */
 
 VALUE
@@ -1889,6 +1889,35 @@ check_setter_id(VALUE name, int (*valid_id_p)(ID), int (*valid_name_p)(VALUE),
     return id;
 }
 
+static int
+rb_is_attr_id(ID id)
+{
+    return rb_is_local_id(id) || rb_is_const_id(id);
+}
+
+static int
+rb_is_attr_name(VALUE name)
+{
+    return rb_is_local_name(name) || rb_is_const_name(name);
+}
+
+static const char invalid_attribute_name[] = "invalid attribute name `%"PRIsVALUE"'";
+
+static ID
+id_for_attr(VALUE name)
+{
+    return id_for_setter(name, attr, invalid_attribute_name);
+}
+
+ID
+rb_check_attr_id(ID id)
+{
+    if (!rb_is_attr_id(id)) {
+	rb_name_error_str(id, invalid_attribute_name, QUOTE_ID(id));
+    }
+    return id;
+}
+
 /*
  *  call-seq:
  *     attr_reader(symbol, ...)  -> nil
@@ -1908,7 +1937,7 @@ rb_mod_attr_reader(int argc, VALUE *argv, VALUE klass)
     int i;
 
     for (i=0; i<argc; i++) {
-	rb_attr(klass, rb_to_id(argv[i]), TRUE, FALSE, TRUE);
+	rb_attr(klass, id_for_attr(argv[i]), TRUE, FALSE, TRUE);
     }
     return Qnil;
 }
@@ -1918,7 +1947,7 @@ rb_mod_attr(int argc, VALUE *argv, VALUE klass)
 {
     if (argc == 2 && (argv[1] == Qtrue || argv[1] == Qfalse)) {
 	rb_warning("optional boolean argument is obsoleted");
-	rb_attr(klass, rb_to_id(argv[0]), 1, RTEST(argv[1]), TRUE);
+	rb_attr(klass, id_for_attr(argv[0]), 1, RTEST(argv[1]), TRUE);
 	return Qnil;
     }
     return rb_mod_attr_reader(argc, argv, klass);
@@ -1940,7 +1969,7 @@ rb_mod_attr_writer(int argc, VALUE *argv, VALUE klass)
     int i;
 
     for (i=0; i<argc; i++) {
-	rb_attr(klass, rb_to_id(argv[i]), FALSE, TRUE, TRUE);
+	rb_attr(klass, id_for_attr(argv[i]), FALSE, TRUE, TRUE);
     }
     return Qnil;
 }
@@ -1968,7 +1997,7 @@ rb_mod_attr_accessor(int argc, VALUE *argv, VALUE klass)
     int i;
 
     for (i=0; i<argc; i++) {
-	rb_attr(klass, rb_to_id(argv[i]), TRUE, TRUE, TRUE);
+	rb_attr(klass, id_for_attr(argv[i]), TRUE, TRUE, TRUE);
     }
     return Qnil;
 }
@@ -3242,6 +3271,7 @@ Init_Object(void)
     rb_define_alloc_func(rb_cClass, rb_class_s_alloc);
     rb_undef_method(rb_cClass, "extend_object");
     rb_undef_method(rb_cClass, "append_features");
+    rb_undef_method(rb_cClass, "prepend_features");
 
     /*
      * Document-class: Data

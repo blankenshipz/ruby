@@ -54,8 +54,8 @@ module SecureRandom
       @pid = 0 unless defined?(@pid)
       pid = $$
       unless @pid == pid
-        now = Time.now
-        ary = [now.to_i, now.nsec, @pid, pid]
+        now = Process.clock_gettime(Process::CLOCK_REALTIME, :nanosecond)
+        ary = [now, @pid, pid]
         OpenSSL::Random.random_add(ary.join("").to_s, 0.0)
         @pid = pid
       end
@@ -116,10 +116,10 @@ module SecureRandom
     raise NotImplementedError, "No random device"
   end
 
-  # SecureRandom.hex generates a random hex string.
+  # SecureRandom.hex generates a random hexadecimal string.
   #
-  # The argument _n_ specifies the length of the random length.
-  # The length of the result string is twice of _n_.
+  # The argument _n_ specifies the length, in bytes, of the random number to be generated.
+  # The length of the resulting hexadecimal string is twice _n_.
   #
   # If _n_ is not specified, 16 is assumed.
   # It may be larger in future.

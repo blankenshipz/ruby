@@ -34,7 +34,7 @@ static VALUE send_internal(int argc, const VALUE *argv, VALUE recv, call_type sc
 static VALUE vm_call0_body(rb_thread_t* th, rb_call_info_t *ci, const VALUE *argv);
 
 static VALUE
-vm_call0(rb_thread_t* th, VALUE recv, VALUE id, int argc, const VALUE *argv,
+vm_call0(rb_thread_t* th, VALUE recv, ID id, int argc, const VALUE *argv,
 	 const rb_method_entry_t *me, VALUE defined_class)
 {
     rb_call_info_t ci_entry, *ci = &ci_entry;
@@ -328,7 +328,7 @@ struct rescue_funcall_args {
     VALUE recv;
     VALUE sym;
     int argc;
-    VALUE *argv;
+    const VALUE *argv;
 };
 
 static VALUE
@@ -385,7 +385,7 @@ check_funcall_callable(rb_thread_t *th, const rb_method_entry_t *me)
 }
 
 static VALUE
-check_funcall_missing(rb_thread_t *th, VALUE klass, VALUE recv, ID mid, int argc, VALUE *argv)
+check_funcall_missing(rb_thread_t *th, VALUE klass, VALUE recv, ID mid, int argc, const VALUE *argv)
 {
     if (rb_method_basic_definition_p(klass, idMethodMissing)) {
 	return Qundef;
@@ -405,7 +405,7 @@ check_funcall_missing(rb_thread_t *th, VALUE klass, VALUE recv, ID mid, int argc
 }
 
 VALUE
-rb_check_funcall(VALUE recv, ID mid, int argc, VALUE *argv)
+rb_check_funcall(VALUE recv, ID mid, int argc, const VALUE *argv)
 {
     VALUE klass = CLASS_OF(recv);
     const rb_method_entry_t *me;
@@ -424,7 +424,7 @@ rb_check_funcall(VALUE recv, ID mid, int argc, VALUE *argv)
 }
 
 VALUE
-rb_check_funcall_with_hook(VALUE recv, ID mid, int argc, VALUE *argv,
+rb_check_funcall_with_hook(VALUE recv, ID mid, int argc, const VALUE *argv,
 			   rb_check_funcall_hook *hook, VALUE arg)
 {
     VALUE klass = CLASS_OF(recv);
@@ -1176,7 +1176,7 @@ rb_each(VALUE obj)
 }
 
 static VALUE
-eval_string_with_cref(VALUE self, VALUE src, VALUE scope, NODE *cref, volatile VALUE file, volatile int line)
+eval_string_with_cref(VALUE self, VALUE src, VALUE scope, NODE *const cref_arg, volatile VALUE file, volatile int line)
 {
     int state;
     VALUE result = Qundef;
@@ -1198,6 +1198,7 @@ eval_string_with_cref(VALUE self, VALUE src, VALUE scope, NODE *cref, volatile V
     mild_compile_error = th->mild_compile_error;
     TH_PUSH_TAG(th);
     if ((state = TH_EXEC_TAG()) == 0) {
+	NODE *cref = cref_arg;
 	rb_binding_t *bind = 0;
 	rb_iseq_t *iseq;
 	volatile VALUE iseqval;
@@ -1336,16 +1337,7 @@ rb_f_eval(int argc, VALUE *argv, VALUE self)
     int line = 1;
 
     rb_scan_args(argc, argv, "13", &src, &scope, &vfile, &vline);
-    if (rb_safe_level() >= 4) {
-	StringValue(src);
-	if (!NIL_P(scope) && !OBJ_TAINTED(scope)) {
-	    rb_raise(rb_eSecurityError,
-		     "Insecure: can't modify trusted binding");
-	}
-    }
-    else {
-	SafeStringValue(src);
-    }
+    SafeStringValue(src);
     if (argc >= 3) {
 	StringValue(vfile);
     }
@@ -1518,7 +1510,7 @@ yield_under(VALUE under, VALUE self, VALUE values)
 	return vm_yield_with_cref(th, 1, &self, cref);
     }
     else {
-	return vm_yield_with_cref(th, RARRAY_LENINT(values), RARRAY_PTR(values), cref);
+	return vm_yield_with_cref(th, RARRAY_LENINT(values), RARRAY_CONST_PTR(values), cref);
     }
 }
 
@@ -1550,12 +1542,7 @@ eval_under(VALUE under, VALUE self, VALUE src, VALUE file, int line)
     if (SPECIAL_CONST_P(self) && !NIL_P(under)) {
 	cref->flags |= NODE_FL_CREF_PUSHED_BY_EVAL;
     }
-    if (rb_safe_level() >= 4) {
-	StringValue(src);
-    }
-    else {
-	SafeStringValue(src);
-    }
+    SafeStringValue(src);
 
     return eval_string_with_cref(self, src, Qnil, cref, file, line);
 }
@@ -1572,12 +1559,7 @@ specific_eval(int argc, VALUE *argv, VALUE klass, VALUE self)
 	int line = 1;
 
 	rb_check_arity(argc, 1, 3);
-	if (rb_safe_level() >= 4) {
-	    StringValue(argv[0]);
-	}
-	else {
-	    SafeStringValue(argv[0]);
-	}
+	SafeStringValue(argv[0]);
 	if (argc > 2)
 	    line = NUM2INT(argv[2]);
 	if (argc > 1) {

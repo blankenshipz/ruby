@@ -8,7 +8,7 @@
 require 'rbconfig'
 
 module Gem
-  VERSION = '2.1.0.rc.1'
+  VERSION = '2.2.0'
 end
 
 # Must be first since it unloads the prelude from 1.9.2
@@ -36,9 +36,9 @@ require 'rubygems/errors'
 #
 # Further RubyGems documentation can be found at:
 #
+# * {RubyGems Guides}[http://guides.rubygems.org]
 # * {RubyGems API}[http://rubygems.rubyforge.org/rdoc] (also available from
 #   <tt>gem server</tt>)
-# * {RubyGems Bookshelf}[http://docs.rubygems.org]
 #
 # == RubyGems Plugins
 #
@@ -139,6 +139,7 @@ module Gem
     build_info
     cache
     doc
+    extensions
     gems
     specifications
   ]
@@ -158,6 +159,7 @@ module Gem
   @path_to_default_spec_map = {}
   @platforms = []
   @ruby = nil
+  @ruby_api_version = nil
   @sources = nil
 
   @post_build_hooks     ||= []
@@ -315,7 +317,7 @@ module Gem
     @paths         = nil
     @user_home     = nil
     Gem::Specification.reset
-    Gem::Security.reset if const_defined? :Security
+    Gem::Security.reset if defined?(Gem::Security)
   end
 
   ##
@@ -434,6 +436,18 @@ module Gem
     end
   ensure
     File.umask old_umask
+  end
+
+  ##
+  # The extension API version of ruby.  This includes the static vs non-static
+  # distinction as extensions cannot be shared between the two.
+
+  def self.extension_api_version # :nodoc:
+    if 'no' == RbConfig::CONFIG['ENABLE_SHARED'] then
+      "#{ruby_api_version}-static"
+    else
+      ruby_api_version
+    end
   end
 
   ##
@@ -823,6 +837,14 @@ module Gem
   end
 
   ##
+  # Returns a String containing the API compatibility version of Ruby
+
+  def self.ruby_api_version
+    @ruby_api_version ||=
+      "#{ConfigMap[:MAJOR]}.#{ConfigMap[:MINOR]}.#{ConfigMap[:TEENY]}"
+  end
+
+  ##
   # Returns the latest release-version specification for the gem +name+.
 
   def self.latest_spec_for name
@@ -1048,16 +1070,14 @@ module Gem
     #
 
     def register_default_spec(spec)
-      new_format, prefix_pattern = nil
+      new_format = Gem.default_gems_use_full_paths? || spec.require_paths.any? {|path| spec.files.any? {|f| f.start_with? path } }
+
+      if new_format
+        prefix_group = spec.require_paths.map {|f| f + "/"}.join("|")
+        prefix_pattern = /^(#{prefix_group})/
+      end
 
       spec.files.each do |file|
-        if new_format == nil
-          new_format = spec.require_paths.any? {|path| file.start_with? path}
-
-          prefix_group = spec.require_paths.map {|f| f + "/"}.join("|")
-          prefix_pattern = /^(#{prefix_group})/
-        end
-
         if new_format
           file = file.sub(prefix_pattern, "")
           next unless $~

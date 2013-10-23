@@ -1261,16 +1261,23 @@ static NOINSERT_UPDATE_CALLBACK(hash_aset_str)
  *     hsh[key] = value        -> value
  *     hsh.store(key, value)   -> value
  *
- *  Element Assignment---Associates the value given by
- *  <i>value</i> with the key given by <i>key</i>.
- *  <i>key</i> should not have its value changed while it is in
- *  use as a key (a <code>String</code> passed as a key will be
- *  duplicated and frozen).
+ *  == Element Assignment
+ *
+ *  Associates the value given by +value+ with the key given by +key+.
  *
  *     h = { "a" => 100, "b" => 200 }
  *     h["a"] = 9
  *     h["c"] = 4
  *     h   #=> {"a"=>9, "b"=>200, "c"=>4}
+ *
+ *  +key+ should not have its value changed while it is in use as a key (an
+ *  <tt>unfrozen String</tt> passed as a key will be duplicated and frozen).
+ *
+ *     a = "a"
+ *     b = "b".freeze
+ *     h = { a => 100, b => 200 }
+ *     h.key(100).equal? a #=> false
+ *     h.key(200).equal? b #=> true
  *
  */
 
@@ -1675,7 +1682,7 @@ keys_i(VALUE key, VALUE value, VALUE ary)
  *
  */
 
-static VALUE
+VALUE
 rb_hash_keys(VALUE hash)
 {
     VALUE ary;
@@ -1705,7 +1712,7 @@ values_i(VALUE key, VALUE value, VALUE ary)
  *
  */
 
-static VALUE
+VALUE
 rb_hash_values(VALUE hash)
 {
     VALUE ary;
@@ -2578,16 +2585,32 @@ getenvblocksize()
 }
 #endif
 
+#if !defined(HAVE_SETENV) || !defined(HAVE_UNSETENV)
+NORETURN(static void invalid_envname(const char *name));
+
+static void
+invalid_envname(const char *name)
+{
+    rb_syserr_fail_str(EINVAL, rb_sprintf("ruby_setenv(%s)", name));
+}
+
+static const char *
+check_envname(const char *name)
+{
+    if (strchr(name, '=')) {
+	invalid_envname(name);
+    }
+    return name;
+}
+#endif
+
 void
 ruby_setenv(const char *name, const char *value)
 {
 #if defined(_WIN32)
     VALUE buf;
     int failed = 0;
-    if (strchr(name, '=')) {
-      fail:
-	rb_syserr_fail_str(EINVAL, rb_sprintf("ruby_setenv(%s)", name));
-    }
+    check_envname(name);
     if (value) {
 	const char* p = GetEnvironmentStringsA();
 	if (!p) goto fail; /* never happen */
@@ -2608,14 +2631,18 @@ ruby_setenv(const char *name, const char *value)
 	if (!SetEnvironmentVariable(name, value) &&
 	    GetLastError() != ERROR_ENVVAR_NOT_FOUND) goto fail;
     }
-    if (failed) goto fail;
+    if (failed) {
+      fail:
+	invalid_envname(name);
+    }
 #elif defined(HAVE_SETENV) && defined(HAVE_UNSETENV)
 #undef setenv
 #undef unsetenv
     if (value) {
 	if (setenv(name, value, 1))
 	    rb_sys_fail_str(rb_sprintf("setenv(%s)", name));
-    } else {
+    }
+    else {
 #ifdef VOID_UNSETENV
 	unsetenv(name);
 #else
@@ -2626,9 +2653,7 @@ ruby_setenv(const char *name, const char *value)
 #elif defined __sun
     size_t len;
     char **env_ptr, *str;
-    if (strchr(name, '=')) {
-	rb_syserr_fail_str(EINVAL, rb_sprintf("ruby_setenv(%s)", name));
-    }
+
     len = strlen(name);
     for (env_ptr = GET_ENVIRON(environ); (str = *env_ptr) != 0; ++env_ptr) {
 	if (!strncmp(str, name, len) && str[len] == '=') {
@@ -2646,9 +2671,7 @@ ruby_setenv(const char *name, const char *value)
 #else  /* WIN32 */
     size_t len;
     int i;
-    if (strchr(name, '=')) {
-	rb_syserr_fail_str(EINVAL, rb_sprintf("ruby_setenv(%s)", name));
-    }
+
     i=envix(name);		        /* where does it go? */
 
     if (environ == origenviron) {	/* need we copy environment? */
@@ -2706,10 +2729,6 @@ static VALUE
 env_aset(VALUE obj, VALUE nm, VALUE val)
 {
     char *name, *value;
-
-    if (rb_safe_level() >= 4) {
-	rb_raise(rb_eSecurityError, "can't change environment variable");
-    }
 
     if (NIL_P(val)) {
 	env_delete(obj, nm);
@@ -2882,8 +2901,15 @@ env_each_pair(VALUE ehash)
     }
     FREE_ENVIRON(environ);
 
-    for (i=0; i<RARRAY_LEN(ary); i+=2) {
-	rb_yield(rb_assoc_new(RARRAY_AREF(ary, i), RARRAY_AREF(ary, i+1)));
+    if (rb_block_arity() > 1) {
+	for (i=0; i<RARRAY_LEN(ary); i+=2) {
+	    rb_yield_values(2, RARRAY_AREF(ary, i), RARRAY_AREF(ary, i+1));
+	}
+    }
+    else {
+	for (i=0; i<RARRAY_LEN(ary); i+=2) {
+	    rb_yield(rb_assoc_new(RARRAY_AREF(ary, i), RARRAY_AREF(ary, i+1)));
+	}
     }
     return ehash;
 }
@@ -3526,7 +3552,7 @@ env_update(VALUE env, VALUE hash)
  *
  *  Accessing a value in a Hash requires using its key:
  *
- *    puts grades["Jane Doe"] # => 10
+ *    puts grades["Jane Doe"] # => 0
  *
  *  === Common Uses
  *

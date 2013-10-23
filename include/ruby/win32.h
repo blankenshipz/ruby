@@ -124,6 +124,10 @@ typedef unsigned int uintptr_t;
 
 #define WNOHANG -1
 
+typedef int clockid_t;
+#define CLOCK_REALTIME  0
+#define CLOCK_MONOTONIC 1
+
 #undef getc
 #undef putc
 #undef fgetc
@@ -312,6 +316,8 @@ extern int rb_w32_uchown(const char *, int, int);
 extern int link(const char *, const char *);
 extern int rb_w32_ulink(const char *, const char *);
 extern int gettimeofday(struct timeval *, struct timezone *);
+extern int clock_gettime(clockid_t, struct timespec *);
+extern int clock_getres(clockid_t, struct timespec *);
 extern rb_pid_t waitpid (rb_pid_t, int *, int);
 extern rb_pid_t rb_w32_spawn(int, const char *, const char*);
 extern rb_pid_t rb_w32_aspawn(int, const char *, char *const *);
@@ -349,6 +355,20 @@ extern FILE *rb_w32_fsopen(const char *, const char *, int);
 #endif
 
 #include <float.h>
+
+#if defined _MSC_VER && _MSC_VER >= 1800 && defined INFINITY
+#pragma warning(push)
+#pragma warning(disable:4756)
+static inline float
+rb_infinity_float(void)
+{
+    return INFINITY;
+}
+#pragma warning(pop)
+#undef INFINITY
+#define INFINITY rb_infinity_float()
+#endif
+
 #if !defined __MINGW32__ || defined __NO_ISOCEXT
 #ifndef isnan
 #define isnan(x) _isnan(x)
@@ -366,6 +386,8 @@ scalb(double a, long b)
 {
     return _scalb(a, b);
 }
+#else
+__declspec(dllimport) extern int finite(double);
 #endif
 
 #if !defined S_IFIFO && defined _S_IFIFO
@@ -450,6 +472,8 @@ extern rb_gid_t  getgid (void);
 extern rb_gid_t  getegid (void);
 extern int       setuid (rb_uid_t);
 extern int       setgid (rb_gid_t);
+
+extern int fstati64(int, struct stati64 *);
 
 extern char *rb_w32_strerror(int);
 

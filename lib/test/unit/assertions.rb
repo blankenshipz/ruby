@@ -27,6 +27,8 @@ module Test
       def assert(test, *msgs)
         case msg = msgs.first
         when String, Proc
+        when nil
+          msgs.shift
         else
           bt = caller.reject { |s| s.start_with?(MINI_DIR) }
           raise ArgumentError, "assertion message must be String or Proc, but #{msg.class} was given.", bt
@@ -96,9 +98,10 @@ module Test
           raise TypeError, "Expected #{expected.inspect} to be a kind of String or Regexp, not #{expected.class}"
         end
 
-        ex = assert_raise(exception, msg) {yield}
+        ex = assert_raise(exception, *msg) {yield}
         msg = message(msg, "") {"Expected Exception(#{exception}) was raised, but the message doesn't match"}
         __send__(assert, expected, ex.message, msg)
+        ex
       end
 
       # :call-seq:
@@ -149,7 +152,8 @@ module Test
       # :call-seq:
       #   assert_nothing_thrown( failure_message = nil, &block )
       #
-      #Fails if the given block uses a call to Kernel#throw.
+      #Fails if the given block uses a call to Kernel#throw, and
+      #returns the result of the block otherwise.
       #
       #An optional failure message may be provided as the final argument.
       #
@@ -158,13 +162,33 @@ module Test
       #    end
       def assert_nothing_thrown(msg=nil)
         begin
-          yield
+          ret = yield
         rescue ArgumentError => error
           raise error if /\Auncaught throw (.+)\z/m !~ error.message
           msg = message(msg) { "<#{$1}> was thrown when nothing was expected" }
           flunk(msg)
         end
         assert(true, "Expected nothing to be thrown")
+        ret
+      end
+
+      # :call-seq:
+      #   assert_throw( tag, failure_message = nil, &block )
+      #
+      #Fails unless the given block throws +tag+, returns the caught
+      #value otherwise.
+      #
+      #An optional failure message may be provided as the final argument.
+      #
+      #    tag = Object.new
+      #    assert_throw(tag, "#{tag} was not thrown!") do
+      #      throw tag
+      #    end
+      def assert_throw(tag, msg = nil)
+        catch(tag) do
+          yield(tag)
+          assert(false, message(msg) {"Expected #{mu_pp(tag)} to have been thrown"})
+        end
       end
 
       # :call-seq:
@@ -358,7 +382,7 @@ EOT
         template.gsub(/\G((?:[^\\]|\\.)*?)(\\)?\?/) { $1 + ($2 ? "?" : mu_pp(arguments.shift)) }
       end
 
-      def message(msg = nil, *args, &default)
+      def message(msg = nil, *args, &default) # :nodoc:
         if Proc === msg
           super(nil, *args) do
             [msg.call, (default.call if default)].compact.reject(&:empty?).join(".\n")

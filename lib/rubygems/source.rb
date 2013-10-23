@@ -26,15 +26,17 @@ class Gem::Source
 
   def <=>(other)
     case other
-    when Gem::Source::Installed, Gem::Source::Local then
+    when Gem::Source::Installed,
+         Gem::Source::Local,
+         Gem::Source::SpecificFile then
       -1
     when Gem::Source then
       if !@uri
         return 0 unless other.uri
-        return -1
+        return 1
       end
 
-      return 1 if !other.uri
+      return -1 if !other.uri
 
       @uri.to_s <=> other.uri.to_s
     else
@@ -45,12 +47,7 @@ class Gem::Source
   include Comparable
 
   def ==(other)
-    case other
-    when self.class
-      @uri == other.uri
-    else
-      false
-    end
+    self.class === other and @uri == other.uri
   end
 
   alias_method :eql?, :==
@@ -69,7 +66,12 @@ class Gem::Source
   end
 
   def update_cache?
-    @update_cache ||= File.stat(Gem.user_home).uid == Process.uid
+    @update_cache ||=
+      begin
+        File.stat(Gem.user_home).uid == Process.uid
+      rescue Errno::ENOENT
+        false
+      end
   end
 
   def fetch_spec(name)
@@ -158,3 +160,7 @@ class Gem::Source
 end
 
 require 'rubygems/source/installed'
+require 'rubygems/source/specific_file'
+require 'rubygems/source/local'
+require 'rubygems/source/vendor'
+

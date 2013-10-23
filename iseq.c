@@ -22,7 +22,7 @@
 #include "insns_info.inc"
 
 #define ISEQ_MAJOR_VERSION 2
-#define ISEQ_MINOR_VERSION 0
+#define ISEQ_MINOR_VERSION 1
 
 VALUE rb_cISeq;
 
@@ -81,7 +81,7 @@ iseq_free(void *ptr)
 	    RUBY_FREE_UNLESS_NULL(iseq->iseq);
 	    RUBY_FREE_UNLESS_NULL(iseq->line_info_table);
 	    RUBY_FREE_UNLESS_NULL(iseq->local_table);
-	    RUBY_FREE_UNLESS_NULL(iseq->ic_entries);
+	    RUBY_FREE_UNLESS_NULL(iseq->is_entries);
 	    RUBY_FREE_UNLESS_NULL(iseq->callinfo_entries);
 	    RUBY_FREE_UNLESS_NULL(iseq->catch_table);
 	    RUBY_FREE_UNLESS_NULL(iseq->arg_opt_table);
@@ -142,7 +142,7 @@ iseq_memsize(const void *ptr)
 	    size += iseq->local_table_size * sizeof(ID);
 	    size += iseq->catch_table_size * sizeof(struct iseq_catch_table_entry);
 	    size += iseq->arg_opts * sizeof(VALUE);
-	    size += iseq->ic_size * sizeof(struct iseq_inline_cache_entry);
+	    size += iseq->is_size * sizeof(union iseq_inline_storage_entry);
 	    size += iseq->callinfo_size * sizeof(rb_call_info_t);
 
 	    if (iseq->compile_data) {
@@ -842,8 +842,8 @@ iseq_inspect(VALUE self)
  *	> iseq = RubyVM::InstructionSequence.compile_file('/tmp/method.rb')
  *	> iseq.path #=> /tmp/method.rb
  */
-static VALUE
-iseq_path(VALUE self)
+VALUE
+rb_iseq_path(VALUE self)
 {
     rb_iseq_t *iseq;
     GetISeqPtr(self, iseq);
@@ -866,8 +866,8 @@ iseq_path(VALUE self)
  *	> iseq = RubyVM::InstructionSequence.compile_file('/tmp/method.rb')
  *	> iseq.absolute_path #=> /tmp/method.rb
  */
-static VALUE
-iseq_absolute_path(VALUE self)
+VALUE
+rb_iseq_absolute_path(VALUE self)
 {
     rb_iseq_t *iseq;
     GetISeqPtr(self, iseq);
@@ -897,8 +897,8 @@ iseq_absolute_path(VALUE self)
  *	> iseq = RubyVM::InstructionSequence.compile_file('/tmp/method.rb')
  *	> iseq.label #=> <main>
  */
-static VALUE
-iseq_label(VALUE self)
+VALUE
+rb_iseq_label(VALUE self)
 {
     rb_iseq_t *iseq;
     GetISeqPtr(self, iseq);
@@ -925,8 +925,8 @@ iseq_label(VALUE self)
  *	> iseq = RubyVM::InstructionSequence.compile_file('/tmp/method.rb')
  *	> iseq.base_label #=> <main>
  */
-static VALUE
-iseq_base_label(VALUE self)
+VALUE
+rb_iseq_base_label(VALUE self)
 {
     rb_iseq_t *iseq;
     GetISeqPtr(self, iseq);
@@ -943,12 +943,34 @@ iseq_base_label(VALUE self)
  *	iseq.first_lineno
  *	#=> 1
  */
-static VALUE
-iseq_first_lineno(VALUE self)
+VALUE
+rb_iseq_first_lineno(VALUE self)
 {
     rb_iseq_t *iseq;
     GetISeqPtr(self, iseq);
     return iseq->location.first_lineno;
+}
+
+VALUE
+rb_iseq_klass(VALUE self)
+{
+    rb_iseq_t *iseq;
+    GetISeqPtr(self, iseq);
+    return iseq->local_iseq->klass;
+}
+
+VALUE
+rb_iseq_method_name(VALUE self)
+{
+    rb_iseq_t *iseq, *local_iseq;
+    GetISeqPtr(self, iseq);
+    local_iseq = iseq->local_iseq;
+    if (local_iseq->type == ISEQ_TYPE_METHOD) {
+	return local_iseq->location.base_label;
+    }
+    else {
+	return Qnil;
+    }
 }
 
 static
@@ -1045,12 +1067,6 @@ iseq_to_a(VALUE self)
     rb_iseq_t *iseq = iseq_check(self);
     rb_secure(1);
     return iseq_data_to_ary(iseq);
-}
-
-int
-rb_iseq_first_lineno(const rb_iseq_t *iseq)
-{
-    return FIX2INT(iseq->location.first_lineno);
 }
 
 /* TODO: search algorithm is brute force.
@@ -1200,7 +1216,7 @@ rb_insn_operand_intern(rb_iseq_t *iseq,
 	break;
 
       case TS_IC:
-	ret = rb_sprintf("<ic:%"PRIdPTRDIFF">", (struct iseq_inline_cache_entry *)op - iseq->ic_entries);
+	ret = rb_sprintf("<is:%"PRIdPTRDIFF">", (union iseq_inline_storage_entry *)op - iseq->is_entries);
 	break;
 
       case TS_CALLINFO:
@@ -1773,10 +1789,11 @@ iseq_data_to_ary(rb_iseq_t *iseq)
 		    rb_ary_push(ary, ID2SYM(entry->id));
 		}
 		break;
-	      case TS_IC: {
-		  struct iseq_inline_cache_entry *ic = (struct iseq_inline_cache_entry *)*seq;
-		    rb_ary_push(ary, INT2FIX(ic - iseq->ic_entries));
-	        }
+	      case TS_IC:
+		{
+		    union iseq_inline_storage_entry *is = (union iseq_inline_storage_entry *)*seq;
+		    rb_ary_push(ary, INT2FIX(is - iseq->is_entries));
+		}
 		break;
 	      case TS_CALLINFO:
 		{
@@ -2258,11 +2275,11 @@ Init_ISeq(void)
     rb_define_method(rb_cISeq, "eval", iseq_eval, 0);
 
     /* location APIs */
-    rb_define_method(rb_cISeq, "path", iseq_path, 0);
-    rb_define_method(rb_cISeq, "absolute_path", iseq_absolute_path, 0);
-    rb_define_method(rb_cISeq, "label", iseq_label, 0);
-    rb_define_method(rb_cISeq, "base_label", iseq_base_label, 0);
-    rb_define_method(rb_cISeq, "first_lineno", iseq_first_lineno, 0);
+    rb_define_method(rb_cISeq, "path", rb_iseq_path, 0);
+    rb_define_method(rb_cISeq, "absolute_path", rb_iseq_absolute_path, 0);
+    rb_define_method(rb_cISeq, "label", rb_iseq_label, 0);
+    rb_define_method(rb_cISeq, "base_label", rb_iseq_base_label, 0);
+    rb_define_method(rb_cISeq, "first_lineno", rb_iseq_first_lineno, 0);
 
 #if 0
     /* Now, it is experimental. No discussions, no tests. */

@@ -15,6 +15,16 @@ module Psych
       end
     end
 
+    def test_doublequotes_when_there_is_a_single
+      yaml = Psych.dump "@123'abc"
+      assert_match(/---\s*"/, yaml)
+    end
+
+    def test_dash_dot
+      assert_cycle '-.'
+      assert_cycle '+.'
+    end
+
     def test_string_subclass_with_anchor
       y = Psych.load <<-eoyml
 ---

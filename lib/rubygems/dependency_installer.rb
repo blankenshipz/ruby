@@ -5,8 +5,7 @@ require 'rubygems/package'
 require 'rubygems/installer'
 require 'rubygems/spec_fetcher'
 require 'rubygems/user_interaction'
-require 'rubygems/source/local'
-require 'rubygems/source/specific_file'
+require 'rubygems/source'
 require 'rubygems/available_set'
 
 ##
@@ -74,12 +73,6 @@ class Gem::DependencyInstaller
   def initialize options = {}
     @only_install_dir = !!options[:install_dir]
     @install_dir = options[:install_dir] || Gem.dir
-
-    if options[:install_dir] then
-      # HACK shouldn't change the global settings, needed for -i behavior
-      # maybe move to the install command?  See also github #442
-      Gem::Specification.dirs = @install_dir
-    end
 
     options = DEFAULT_OPTIONS.merge options
 
@@ -251,7 +244,6 @@ class Gem::DependencyInstaller
   def find_spec_by_name_and_version gem_name,
                                     version = Gem::Requirement.default,
                                     prerelease = false
-
     set = Gem::AvailableSet.new
 
     if consider_local?
@@ -269,7 +261,6 @@ class Gem::DependencyInstaller
 
     if set.empty?
       dep = Gem::Dependency.new gem_name, version
-      # HACK Dependency objects should be immutable
       dep.prerelease = true if prerelease
 
       set = find_gems_with_sources(dep)
@@ -287,7 +278,7 @@ class Gem::DependencyInstaller
   # Gathers all dependencies necessary for the installation from local and
   # remote sources unless the ignore_dependencies was given.
   #--
-  # TODO remove, no longer used
+  # TODO remove at RubyGems 3
 
   def gather_dependencies # :nodoc:
     specs = @available.all_specs
@@ -412,7 +403,9 @@ class Gem::DependencyInstaller
       request_set.soft_missing = true
     end
 
-    request_set.resolve Gem::DependencyResolver.compose_sets(as, installer_set)
+    composed_set = Gem::DependencyResolver.compose_sets as, installer_set
+
+    request_set.resolve composed_set
 
     request_set
   end

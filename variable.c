@@ -21,14 +21,12 @@
 #include "id.h"
 
 st_table *rb_global_tbl;
-st_table *rb_class_tbl;
 static ID autoload, classpath, tmp_classpath, classid;
 
 void
 Init_var_tables(void)
 {
     rb_global_tbl = st_init_numtable();
-    rb_class_tbl = st_init_numtable();
     CONST_ID(autoload, "__autoload__");
     /* __classpath__: fully qualified class path */
     CONST_ID(classpath, "__classpath__");
@@ -135,9 +133,6 @@ find_class_path(VALUE klass, ID preferred)
     if (RCLASS_CONST_TBL(rb_cObject)) {
 	st_foreach_safe(RCLASS_CONST_TBL(rb_cObject), fc_i, (st_data_t)&arg);
     }
-    if (arg.path == 0) {
-	st_foreach_safe(rb_class_tbl, fc_i, (st_data_t)&arg);
-    }
     if (arg.path) {
 	st_data_t tmp = tmp_classpath;
 	if (!RCLASS_IV_TBL(klass)) {
@@ -177,8 +172,13 @@ classname(VALUE klass, int *permanent)
 		path = find_class_path(klass, (ID)0);
 	    }
 	    if (NIL_P(path)) {
-		if (!cid || !st_lookup(RCLASS_IV_TBL(klass), (st_data_t)tmp_classpath, &n)) {
+		if (!cid) {
 		    return Qnil;
+		}
+		if (!st_lookup(RCLASS_IV_TBL(klass), (st_data_t)tmp_classpath, &n)) {
+		    path = rb_str_dup(rb_id2str(cid));
+		    OBJ_FREEZE(path);
+		    return path;
 		}
 		*permanent = 0;
 		path = (VALUE)n;
@@ -385,8 +385,10 @@ rb_class_name(VALUE klass)
 const char *
 rb_class2name(VALUE klass)
 {
-    VALUE name = rb_class_name(klass);
-    return RSTRING_PTR(name);
+    int permanent;
+    VALUE path = rb_tmp_class_path(rb_class_real(klass), &permanent, rb_ivar_set);
+    if (NIL_P(path)) return NULL;
+    return RSTRING_PTR(path);
 }
 
 const char *
@@ -782,8 +784,6 @@ rb_gvar_set(struct global_entry *entry, VALUE val)
     struct trace_data trace;
     struct global_variable *var = entry->var;
 
-    if (rb_safe_level() >= 4)
-	rb_raise(rb_eSecurityError, "Insecure: can't change global variable value");
     (*var->setter)(val, entry->id, var->data, var);
 
     if (var->trace && !var->block_trace) {
@@ -859,9 +859,6 @@ rb_alias_variable(ID name1, ID name2)
 {
     struct global_entry *entry1, *entry2;
     st_data_t data1;
-
-    if (rb_safe_level() >= 4)
-	rb_raise(rb_eSecurityError, "Insecure: can't alias global variable");
 
     entry2 = rb_global_entry(name2);
     if (!st_lookup(rb_global_tbl, (st_data_t)name1, &data1)) {
@@ -1944,7 +1941,7 @@ rb_const_remove(VALUE mod, ID id)
 		      rb_class_name(mod), QUOTE_ID(id));
     }
 
-    rb_vm_change_state();
+    rb_clear_cache();
 
     val = ((rb_const_entry_t*)v)->value;
     if (val == Qundef) {
@@ -2154,7 +2151,8 @@ rb_const_set(VALUE klass, ID id, VALUE val)
 		load = autoload_data(klass, id);
 		/* for autoloading thread, keep the defined value to autoloading storage */
 		if (load && (ele = check_autoload_data(load)) && (ele->thread == rb_thread_current())) {
-		    rb_vm_change_state();
+		    rb_clear_cache();
+
 		    ele->value = val; /* autoload_i is shady */
 		    return;
 		}
@@ -2177,7 +2175,8 @@ rb_const_set(VALUE klass, ID id, VALUE val)
 	}
     }
 
-    rb_vm_change_state();
+    rb_clear_cache();
+
 
     ce = ALLOC(rb_const_entry_t);
     MEMZERO(ce, rb_const_entry_t, 1);
@@ -2195,8 +2194,6 @@ rb_define_const(VALUE klass, const char *name, VALUE val)
 
     if (!rb_is_const_id(id)) {
 	rb_warn("rb_define_const: invalid name `%s' for constant", name);
-    }
-    if (klass == rb_cObject) {
     }
     rb_const_set(klass, id, val);
 }
@@ -2224,8 +2221,10 @@ set_const_visibility(VALUE mod, int argc, VALUE *argv, rb_const_flag_t flag)
 	VALUE val = argv[i];
 	id = rb_check_id(&val);
 	if (!id) {
-	    if (i > 0)
-		rb_clear_cache_by_class(mod);
+	    if (i > 0) {
+		rb_clear_cache();
+	    }
+
 	    rb_name_error_str(val, "constant %"PRIsVALUE"::%"PRIsVALUE" not defined",
 			      rb_class_name(mod), QUOTE(val));
 	}
@@ -2234,13 +2233,14 @@ set_const_visibility(VALUE mod, int argc, VALUE *argv, rb_const_flag_t flag)
 	    ((rb_const_entry_t*)v)->flag = flag;
 	}
 	else {
-	    if (i > 0)
-		rb_clear_cache_by_class(mod);
+	    if (i > 0) {
+		rb_clear_cache();
+	    }
 	    rb_name_error(id, "constant %"PRIsVALUE"::%"PRIsVALUE" not defined",
 			  rb_class_name(mod), QUOTE_ID(id));
 	}
     }
-    rb_clear_cache_by_class(mod);
+    rb_clear_cache();
 }
 
 /*

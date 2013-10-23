@@ -1,8 +1,8 @@
-require 'rubygems/source'
-
 class Gem::Source::Local < Gem::Source
   def initialize
-    @uri = nil
+    @specs   = nil
+    @api_uri = nil
+    @uri     = nil
   end
 
   ##
@@ -22,7 +22,8 @@ class Gem::Source::Local < Gem::Source
   end
 
   def inspect # :nodoc:
-    "#<%s specs: %p>" % [self.class, @specs.keys]
+    keys = @specs ? @specs.keys.sort : 'NOT LOADED'
+    "#<%s specs: %p>" % [self.class, keys]
   end
 
   def load_specs(type)
@@ -87,7 +88,7 @@ class Gem::Source::Local < Gem::Source
       end
     end
 
-    found.sort_by { |s| s.version }.last
+    found.max_by { |s| s.version }
   end
 
   def fetch_spec(name)
@@ -96,7 +97,7 @@ class Gem::Source::Local < Gem::Source
     if data = @specs[name]
       data.last.spec
     else
-      raise Gem::Exception, "Unable to find spec for '#{name}'"
+      raise Gem::Exception, "Unable to find spec for #{name.inspect}"
     end
   end
 

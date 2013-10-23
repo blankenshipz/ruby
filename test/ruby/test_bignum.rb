@@ -577,6 +577,9 @@ class TestBignum < Test::Unit::TestCase
   end
 
   def test_interrupt_during_to_s
+    if defined?(Bignum::GMP_VERSION)
+      return # GMP doesn't support interrupt during an operation.
+    end
     time = Time.now
     start_flag = false
     end_flag = false
@@ -595,6 +598,9 @@ class TestBignum < Test::Unit::TestCase
   end
 
   def test_interrupt_during_bigdivrem
+    if defined?(Bignum::GMP_VERSION)
+      return # GMP doesn't support interrupt during an operation.
+    end
     return unless Process.respond_to?(:kill)
     begin
       trace = []
@@ -628,8 +634,7 @@ class TestBignum < Test::Unit::TestCase
     if (big = 2**31-1).is_a?(Fixnum)
       return
     end
-    e = assert_raise(RangeError) {(1 << big).to_s}
-    assert_match(/too big to convert/, e.message)
+    assert_raise_with_message(RangeError, /too big to convert/) {(1 << big).to_s}
   end
 
   def test_fix_fdiv

@@ -109,7 +109,11 @@
 #define UNLIKELY(x) (x)
 #endif /* __GNUC__ >= 3 */
 
-#if (defined(__clang__) && (__clang_major__ == 4 && __clang_minor__ == 2))
+#ifndef __has_attribute
+# define __has_attribute(x) 0
+#endif
+
+#if __has_attribute(unused)
 #define UNINITIALIZED_VAR(x) x __attribute__((unused))
 #elif defined(__GNUC__) && __GNUC__ >= 3
 #define UNINITIALIZED_VAR(x) x = x
@@ -125,13 +129,24 @@ struct iseq_compile_data_ensure_node_stack;
 
 typedef struct rb_compile_option_struct rb_compile_option_t;
 
+
 struct iseq_inline_cache_entry {
-    VALUE ic_vmstat;
+    vm_state_version_t ic_vmstat;
+    vm_state_version_t ic_seq;
     VALUE ic_class;
     union {
+	size_t index;
 	VALUE value;
-	long index;
     } ic_value;
+};
+
+union iseq_inline_storage_entry {
+    struct {
+	struct rb_thread_struct *running_thread;
+	VALUE value;
+	VALUE done;
+    } once;
+    struct iseq_inline_cache_entry cache;
 };
 
 /* to avoid warning */
@@ -147,7 +162,8 @@ typedef struct rb_call_info_struct {
     rb_iseq_t *blockiseq;
 
     /* inline cache: keys */
-    VALUE vmstat;
+    vm_state_version_t vmstat;
+    vm_state_version_t seq;
     VALUE klass;
 
     /* inline cache: values */
@@ -224,8 +240,8 @@ struct rb_iseq_struct {
     /* sizeof(vars) + 1 */
     int local_size;
 
-    struct iseq_inline_cache_entry *ic_entries;
-    int ic_size;
+    union iseq_inline_storage_entry *is_entries;
+    int is_size;
 
     rb_call_info_t *callinfo_entries;
     int callinfo_size;
@@ -373,7 +389,9 @@ typedef struct rb_vm_struct {
     /* hook */
     rb_hook_list_t event_hooks;
 
-    struct rb_postponed_job_struct *postponed_job;
+    /* postponed_job */
+    struct rb_postponed_job_struct *postponed_job_buffer;
+    int postponed_job_index;
 
     int src_encoding_index;
 
@@ -381,6 +399,8 @@ typedef struct rb_vm_struct {
     VALUE coverages;
 
     struct unlinked_method_entry_list_entry *unlinked_method_entry_list;
+
+    VALUE defined_module_hash;
 
 #if defined(ENABLE_VM_OBJSPACE) && ENABLE_VM_OBJSPACE
     struct rb_objspace *objspace;
@@ -622,7 +642,7 @@ typedef enum {
     VM_DEFINECLASS_TYPE_SINGLETON_CLASS = 0x01,
     VM_DEFINECLASS_TYPE_MODULE          = 0x02,
     /* 0x03..0x06 is reserved */
-    VM_DEFINECLASS_TYPE_MASK            = 0x07,
+    VM_DEFINECLASS_TYPE_MASK            = 0x07
 } rb_vm_defineclass_type_t;
 
 #define VM_DEFINECLASS_TYPE(x) ((rb_vm_defineclass_type_t)(x) & VM_DEFINECLASS_TYPE_MASK)
@@ -650,7 +670,6 @@ VALUE rb_iseq_compile_with_option(VALUE src, VALUE file, VALUE absolute_path, VA
 VALUE rb_iseq_disasm(VALUE self);
 int rb_iseq_disasm_insn(VALUE str, VALUE *iseqval, size_t pos, rb_iseq_t *iseq, VALUE child);
 const char *ruby_node_name(int node);
-int rb_iseq_first_lineno(const rb_iseq_t *iseq);
 
 RUBY_EXTERN VALUE rb_cISeq;
 RUBY_EXTERN VALUE rb_cRubyVM;

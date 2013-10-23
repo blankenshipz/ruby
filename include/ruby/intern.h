@@ -63,6 +63,7 @@ VALUE rb_ary_dup(VALUE);
 VALUE rb_ary_resurrect(VALUE ary);
 VALUE rb_ary_to_ary(VALUE);
 VALUE rb_ary_to_s(VALUE);
+VALUE rb_ary_cat(VALUE, const VALUE *, long);
 VALUE rb_ary_push(VALUE, VALUE);
 VALUE rb_ary_pop(VALUE);
 VALUE rb_ary_shift(VALUE);
@@ -289,7 +290,7 @@ void rb_check_copyable(VALUE obj, VALUE orig);
 /* eval.c */
 int rb_sourceline(void);
 const char *rb_sourcefile(void);
-VALUE rb_check_funcall(VALUE, ID, int, VALUE*);
+VALUE rb_check_funcall(VALUE, ID, int, const VALUE*);
 
 NORETURN(void rb_error_arity(int, int, int));
 #define rb_check_arity rb_check_arity /* for ifdef */
@@ -428,6 +429,7 @@ int rb_thread_alone(void);
 DEPRECATED(void rb_thread_polling(void));
 void rb_thread_sleep(int);
 void rb_thread_sleep_forever(void);
+void rb_thread_sleep_deadly(void);
 VALUE rb_thread_stop(void);
 VALUE rb_thread_wakeup(VALUE);
 VALUE rb_thread_wakeup_alive(VALUE);
@@ -446,6 +448,7 @@ void rb_thread_atfork_before_exec(void);
 VALUE rb_exec_recursive(VALUE(*)(VALUE, VALUE, int),VALUE,VALUE);
 VALUE rb_exec_recursive_paired(VALUE(*)(VALUE, VALUE, int),VALUE,VALUE,VALUE);
 VALUE rb_exec_recursive_outer(VALUE(*)(VALUE, VALUE, int),VALUE,VALUE);
+VALUE rb_exec_recursive_paired_outer(VALUE(*)(VALUE, VALUE, int),VALUE,VALUE,VALUE);
 /* dir.c */
 VALUE rb_dir_getwd(void);
 /* file.c */
@@ -848,6 +851,8 @@ VALUE rb_struct_s_members(VALUE);
 VALUE rb_struct_members(VALUE);
 VALUE rb_struct_alloc_noinit(VALUE);
 VALUE rb_struct_define_without_accessor(const char *, VALUE, rb_alloc_func_t, ...);
+VALUE rb_struct_define_without_accessor_under(VALUE outer, const char *class_name, VALUE super, rb_alloc_func_t alloc, ...);
+
 /* thread.c */
 typedef void rb_unblock_function_t(void *);
 typedef VALUE rb_blocking_function_t(void *);

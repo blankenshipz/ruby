@@ -52,6 +52,15 @@ class Gem::Commands::UpdateCommand < Gem::Command
     "--document --no-force --install-dir #{Gem.dir}"
   end
 
+  def description # :nodoc:
+    <<-EOF
+The update command will update your gems to the latest version.
+
+The update comamnd does not remove the previous version.  Use the cleanup
+command to remove old versions.
+    EOF
+  end
+
   def usage # :nodoc:
     "#{program_name} GEMNAME [GEMNAME ...]"
   end
@@ -101,7 +110,11 @@ class Gem::Commands::UpdateCommand < Gem::Command
 
     fetcher = Gem::SpecFetcher.fetcher
 
-    spec_tuples, _ = fetcher.search_for_dependency dependency
+    spec_tuples, errors = fetcher.search_for_dependency dependency
+
+    error = errors.find { |errors| errors.respond_to? :exception }
+
+    raise error if error
 
     spec_tuples
   end
@@ -125,7 +138,7 @@ class Gem::Commands::UpdateCommand < Gem::Command
       g.name == spec.name and g.match_platform?
     end
 
-    highest_remote_gem = matching_gems.sort_by { |g,_| g.version }.last
+    highest_remote_gem = matching_gems.max_by { |g,_| g.version }
 
     highest_remote_gem ||= [Gem::NameTuple.null]
 
@@ -235,6 +248,9 @@ class Gem::Commands::UpdateCommand < Gem::Command
     args << '--no-rdoc' unless options[:document].include? 'rdoc'
     args << '--no-ri'   unless options[:document].include? 'ri'
     args << '--no-format-executable' if options[:no_format_executable]
+    args << '--previous-version' << Gem::VERSION if
+      options[:system] == true or
+        Gem::Version.new(options[:system]) >= Gem::Version.new(2)
     args
   end
 

@@ -55,11 +55,12 @@ enum {
   BOP_GE,
   BOP_NOT,
   BOP_NEQ,
+  BOP_MATCH,
 
   BOP_LAST_
 };
 
-extern char ruby_vm_redefined_flag[BOP_LAST_];
+extern short ruby_vm_redefined_flag[BOP_LAST_];
 extern VALUE ruby_vm_const_missing_count;
 
 #if VM_COLLECT_USAGE_DETAILS
@@ -237,6 +238,7 @@ enum vm_regan_acttype {
 #define BIGNUM_REDEFINED_OP_FLAG (1 << 5)
 #define SYMBOL_REDEFINED_OP_FLAG (1 << 6)
 #define TIME_REDEFINED_OP_FLAG   (1 << 7)
+#define REGEXP_REDEFINED_OP_FLAG (1 << 8)
 
 #define BASIC_OP_UNREDEFINED_P(op, klass) (LIKELY((ruby_vm_redefined_flag[(op)]&(klass)) == 0))
 
@@ -246,20 +248,18 @@ enum vm_regan_acttype {
 #else
 #define FLONUM_2_P(a, b) 0
 #endif
-#define HEAP_CLASS_OF(obj) (RBASIC(obj)->klass)
 
 #ifndef USE_IC_FOR_SPECIALIZED_METHOD
 #define USE_IC_FOR_SPECIALIZED_METHOD 1
 #endif
 
-#define CALL_SIMPLE_METHOD(recv) do { \
+#define CALL_SIMPLE_METHOD(recv_) do { \
     ci->blockptr = 0; ci->argc = ci->orig_argc; \
-    vm_search_method(ci, ci->recv = (recv)); \
+    vm_search_method(ci, ci->recv = (recv_)); \
     CALL_METHOD(ci); \
 } while (0)
 
-static VALUE ruby_vm_global_state_version = 1;
-
+#define NEXT_CLASS_SEQUENCE() (++ruby_vm_sequence)
 #define GET_VM_STATE_VERSION() (ruby_vm_global_state_version)
 #define INC_VM_STATE_VERSION() do { \
     ruby_vm_global_state_version = (ruby_vm_global_state_version + 1); \

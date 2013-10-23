@@ -453,6 +453,8 @@ static struct {
 
 #ifdef __dietlibc__
 #define sighandler_t sh_t
+#else
+#define sighandler_t ruby_sighandler_t
 #endif
 
 typedef RETSIGTYPE (*sighandler_t)(int);
@@ -465,7 +467,8 @@ typedef RETSIGTYPE ruby_sigaction_t(int);
 #endif
 
 #ifdef USE_SIGALTSTACK
-int rb_sigaltstack_size(void)
+int
+rb_sigaltstack_size(void)
 {
     /* XXX: BSD_vfprintf() uses >1500KiB stack and x86-64 need >5KiB stack. */
     int size = 8192;
@@ -657,7 +660,8 @@ sigbus(int sig SIGINFO_ARG)
 #endif
 
 #ifdef SIGSEGV
-static void ruby_abort(void)
+static void
+ruby_abort(void)
 {
 #ifdef __sun
     /* Solaris's abort() is async signal unsafe. Of course, it is not

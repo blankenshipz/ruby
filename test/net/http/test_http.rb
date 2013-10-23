@@ -403,7 +403,7 @@ module TestNetHTTP_version_1_1_methods
 
       conn = Net::HTTP.new('localhost', port)
       conn.read_timeout = 0.01
-      conn.open_timeout = 0.01
+      conn.open_timeout = 0.1
 
       th = Thread.new do
         assert_raise(Net::ReadTimeout) {
@@ -910,7 +910,9 @@ class TestNetHTTPLocalBind < Test::Unit::TestCase
 
     http = Net::HTTP.new(config('host'), config('port'))
     http.local_host = Addrinfo.tcp(config('host'), config('port')).ip_address
-    http.local_port = [*10000..20000].shuffle.first.to_s
+    http.local_port = Addrinfo.tcp(config('host'), 0).bind {|s|
+      s.local_address.ip_port.to_s
+    }
     assert_not_nil(http.local_host)
     assert_not_nil(http.local_port)
 

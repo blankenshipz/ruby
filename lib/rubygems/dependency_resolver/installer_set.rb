@@ -1,3 +1,7 @@
+##
+# A set of gems for installation sourced from remote sources and local .gem
+# files
+
 class Gem::DependencyResolver::InstallerSet
 
   ##
@@ -87,7 +91,11 @@ class Gem::DependencyResolver::InstallerSet
   end
 
   def inspect # :nodoc:
-    '#<%s domain: %s specs: %p>' % [ self.class, @domain, @specs.keys ]
+    always_install = @always_install.map { |s| s.full_name }
+
+    '#<%s domain: %s specs: %p always install: %p>' % [
+      self.class, @domain, @specs.keys, always_install,
+    ]
   end
 
   ##
@@ -115,15 +123,35 @@ class Gem::DependencyResolver::InstallerSet
   # Called from IndexSpecification to get a true Specification
   # object.
 
-  def load_spec name, ver, source
-    key = "#{name}-#{ver}"
-    @specs[key] ||= source.fetch_spec Gem::NameTuple.new name, ver
+  def load_spec name, ver, platform, source
+    key = "#{name}-#{ver}-#{platform}"
+
+    @specs.fetch key do
+      tuple = Gem::NameTuple.new name, ver, platform
+
+      @specs[key] = source.fetch_spec tuple
+    end
   end
 
   ##
   # No prefetching needed since we load the whole index in initially.
 
   def prefetch(reqs)
+  end
+
+  def pretty_print q # :nodoc:
+    q.group 2, '[InstallerSet', ']' do
+      q.breakable
+      q.text "domain: #{@domain}"
+
+      q.breakable
+      q.text 'specs: '
+      q.pp @specs.keys
+
+      q.breakable
+      q.text 'always install: '
+      q.pp @always_install
+    end
   end
 
 end

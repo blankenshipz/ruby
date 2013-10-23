@@ -1,6 +1,7 @@
 # coding: US-ASCII
 require 'rubygems/test_case'
 require 'rubygems'
+require 'rubygems/command'
 require 'rubygems/installer'
 require 'pathname'
 require 'tmpdir'
@@ -257,7 +258,12 @@ class TestGem < Gem::TestCase
 
     Gem.ensure_gem_subdirectories @gemhome
 
-    assert File.directory? File.join(@gemhome, "cache")
+    assert_path_exists File.join @gemhome, 'build_info'
+    assert_path_exists File.join @gemhome, 'cache'
+    assert_path_exists File.join @gemhome, 'doc'
+    assert_path_exists File.join @gemhome, 'extensions'
+    assert_path_exists File.join @gemhome, 'gems'
+    assert_path_exists File.join @gemhome, 'specifications'
   end
 
   def test_self_ensure_gem_directories_permissions
@@ -330,6 +336,24 @@ class TestGem < Gem::TestCase
     ensure
       FileUtils.chmod 0600, parent
     end
+  end
+
+  def test_self_extension_install_dir_shared
+    enable_shared, RbConfig::CONFIG['ENABLE_SHARED'] =
+      RbConfig::CONFIG['ENABLE_SHARED'], 'yes'
+
+    assert_equal Gem.ruby_api_version, Gem.extension_api_version
+  ensure
+    RbConfig::CONFIG['ENABLE_SHARED'] = enable_shared
+  end
+
+  def test_self_extension_install_dir_static
+    enable_shared, RbConfig::CONFIG['ENABLE_SHARED'] =
+      RbConfig::CONFIG['ENABLE_SHARED'], 'no'
+
+    assert_equal "#{Gem.ruby_api_version}-static", Gem.extension_api_version
+  ensure
+    RbConfig::CONFIG['ENABLE_SHARED'] = enable_shared
   end
 
   def test_self_find_files
@@ -637,6 +661,22 @@ class TestGem < Gem::TestCase
     Gem::ConfigMap[:bindir] = orig_bindir
     Gem::ConfigMap[:ruby_install_name] = orig_ruby_install_name
     Gem::ConfigMap[:EXEEXT] = orig_exe_ext
+  end
+
+  def test_self_ruby_api_version
+    orig_MAJOR, Gem::ConfigMap[:MAJOR] = Gem::ConfigMap[:MAJOR], '1'
+    orig_MINOR, Gem::ConfigMap[:MINOR] = Gem::ConfigMap[:MINOR], '2'
+    orig_TEENY, Gem::ConfigMap[:TEENY] = Gem::ConfigMap[:TEENY], '3'
+
+    Gem.instance_variable_set :@ruby_api_version, nil
+
+    assert_equal '1.2.3', Gem.ruby_api_version
+  ensure
+    Gem.instance_variable_set :@ruby_api_version, nil
+
+    Gem::ConfigMap[:MAJOR] = orig_MAJOR
+    Gem::ConfigMap[:MINOR] = orig_MINOR
+    Gem::ConfigMap[:TEENY] = orig_TEENY
   end
 
   def test_self_ruby_version_1_8_5
@@ -1179,6 +1219,33 @@ class TestGem < Gem::TestCase
     assert_equal new_style, Gem.find_unresolved_default_spec("bar.rb")
     assert_equal nil, Gem.find_unresolved_default_spec("exec")
     assert_equal nil, Gem.find_unresolved_default_spec("README")
+  end
+
+  def test_default_gems_use_full_paths
+    begin
+      if defined?(RUBY_ENGINE) then
+        engine = RUBY_ENGINE
+        Object.send :remove_const, :RUBY_ENGINE
+      end
+      Object.const_set :RUBY_ENGINE, 'ruby'
+
+      refute Gem.default_gems_use_full_paths?
+    ensure
+      Object.send :remove_const, :RUBY_ENGINE
+      Object.const_set :RUBY_ENGINE, engine if engine
+    end
+
+    begin
+      if defined?(RUBY_ENGINE) then
+        engine = RUBY_ENGINE
+        Object.send :remove_const, :RUBY_ENGINE
+      end
+      Object.const_set :RUBY_ENGINE, 'jruby'
+      assert Gem.default_gems_use_full_paths?
+    ensure
+      Object.send :remove_const, :RUBY_ENGINE
+      Object.const_set :RUBY_ENGINE, engine if engine
+    end
   end
 
   def with_plugin(path)

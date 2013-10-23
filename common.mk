@@ -95,7 +95,6 @@ COMMONOBJS    = array.$(OBJEXT) \
 		vm_trace.$(OBJEXT) \
 		thread.$(OBJEXT) \
 		cont.$(OBJEXT) \
-		sizes.$(OBJEXT) \
 		$(BUILTIN_ENCOBJS) \
 		$(BUILTIN_TRANSOBJS) \
 		$(MISSING)
@@ -103,6 +102,7 @@ COMMONOBJS    = array.$(OBJEXT) \
 EXPORTOBJS    = $(DLNOBJ) \
 		localeinit.$(OBJEXT) \
 		loadpath.$(OBJEXT) \
+		sizes.$(OBJEXT) \
 		$(COMMONOBJS)
 
 OBJS          = $(EXPORTOBJS) prelude.$(OBJEXT)
@@ -112,8 +112,6 @@ GOLFOBJS      = goruby.$(OBJEXT) golf_prelude.$(OBJEXT)
 
 PRELUDE_SCRIPTS = $(srcdir)/prelude.rb $(srcdir)/enc/prelude.rb $(DEFAULT_PRELUDES)
 GEM_PRELUDE = $(srcdir)/gem_prelude.rb
-YES_GEM_PRELUDE = $(GEM_PRELUDE)
-NO_GEM_PRELUDE =
 PRELUDES      = prelude.c miniprelude.c
 GOLFPRELUDES = golf_prelude.c
 
@@ -123,7 +121,7 @@ SCRIPT_ARGS   =	--dest-dir="$(DESTDIR)" \
 		--make-flags="$(MAKEFLAGS)"
 EXTMK_ARGS    =	$(SCRIPT_ARGS) --extension $(EXTS) --extstatic $(EXTSTATIC) \
 		--make-flags="V=$(V) MINIRUBY='$(MINIRUBY)'" --
-INSTRUBY      =	$(SUDO) $(MINIRUBY) $(srcdir)/tool/rbinstall.rb
+INSTRUBY      =	$(SUDO) $(RUNRUBY) -r./$(arch)-fake $(srcdir)/tool/rbinstall.rb
 INSTRUBY_ARGS =	$(SCRIPT_ARGS) \
 		--data-mode=$(INSTALL_DATA_MODE) \
 		--prog-mode=$(INSTALL_PROG_MODE) \
@@ -449,7 +447,7 @@ post-no-install-doc::
 
 CLEAR_INSTALLED_LIST = clear-installed-list
 
-install-prereq: $(CLEAR_INSTALLED_LIST) PHONY
+install-prereq: $(CLEAR_INSTALLED_LIST) yes-fake PHONY
 
 clear-installed-list: PHONY
 	@> $(INSTALLED_LIST) set MAKE="$(MAKE)"
@@ -506,23 +504,23 @@ no-fake: PHONY
 btest: $(TEST_RUNNABLE)-btest
 no-btest: PHONY
 yes-btest: fake miniruby$(EXEEXT) PHONY
-	$(BOOTSTRAPRUBY) "$(srcdir)/bootstraptest/runner.rb" --ruby="$(BTESTRUBY)" $(OPTS) $(TESTOPTS)
+	$(BOOTSTRAPRUBY) "$(srcdir)/bootstraptest/runner.rb" --ruby="$(BTESTRUBY) $(RUN_OPTS)" $(OPTS) $(TESTOPTS)
 
 btest-ruby: $(TEST_RUNNABLE)-btest-ruby
 no-btest-ruby: PHONY
 yes-btest-ruby: prog PHONY
-	$(Q)$(RUNRUBY) "$(srcdir)/bootstraptest/runner.rb" --ruby="$(PROGRAM) -I$(srcdir)/lib" -q $(OPTS) $(TESTOPTS)
+	$(Q)$(RUNRUBY) "$(srcdir)/bootstraptest/runner.rb" --ruby="$(PROGRAM) -I$(srcdir)/lib $(RUN_OPTS)" -q $(OPTS) $(TESTOPTS)
 
 test-sample: $(TEST_RUNNABLE)-test-sample
 no-test-sample: PHONY
 yes-test-sample: prog PHONY
-	$(Q)$(RUNRUBY) $(srcdir)/tool/rubytest.rb $(OPTS) $(TESTOPTS)
+	$(Q)$(RUNRUBY) $(srcdir)/tool/rubytest.rb --run-opt=$(RUN_OPTS) $(OPTS) $(TESTOPTS)
 
 test-knownbugs: test-knownbug
 test-knownbug: $(TEST_RUNNABLE)-test-knownbug
 no-test-knownbug: PHONY
 yes-test-knownbug: prog PHONY
-	-$(RUNRUBY) "$(srcdir)/bootstraptest/runner.rb" --ruby="$(PROGRAM)" $(OPTS) $(TESTOPTS) $(srcdir)/KNOWNBUGS.rb
+	-$(RUNRUBY) "$(srcdir)/bootstraptest/runner.rb" --ruby="$(PROGRAM) $(RUN_OPTS)" $(OPTS) $(TESTOPTS) $(srcdir)/KNOWNBUGS.rb
 
 test: test-sample btest-ruby test-knownbug
 
@@ -883,7 +881,7 @@ INSNS2VMOPT = --srcdir="$(srcdir)"
 
 {$(VPATH)}vm.inc: $(srcdir)/template/vm.inc.tmpl
 
-srcs: {$(VPATH)}parse.c {$(VPATH)}lex.c {$(VPATH)}newline.c {$(VPATH)}id.c srcs-ext srcs-enc
+srcs: {$(VPATH)}parse.c {$(VPATH)}lex.c {$(VPATH)}newline.c {$(VPATH)}id.c {$(VPATH)}sizes.c srcs-ext srcs-enc
 
 EXT_SRCS = $(srcdir)/ext/ripper/ripper.c $(srcdir)/ext/json/parser/parser.c \
 	   $(srcdir)/ext/dl/callback/callback.c
@@ -909,6 +907,11 @@ id.c: $(srcdir)/tool/generic_erb.rb $(srcdir)/template/id.c.tmpl $(srcdir)/defs/
 	$(ECHO) generating $@
 	$(Q) $(BASERUBY) $(srcdir)/tool/generic_erb.rb --output=$@ \
 		$(srcdir)/template/id.c.tmpl
+
+sizes.c: $(srcdir)/tool/generic_erb.rb $(srcdir)/template/sizes.c.tmpl $(srcdir)/configure.in
+	$(ECHO) generating $@
+	$(Q) $(BASERUBY) $(srcdir)/tool/generic_erb.rb --output=$@ \
+		$(srcdir)/template/sizes.c.tmpl $(srcdir)/configure.in
 
 node_name.inc: {$(VPATH)}node.h
 	$(ECHO) generating $@

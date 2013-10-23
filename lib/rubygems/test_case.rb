@@ -785,7 +785,7 @@ Also, a list:
     @a_evil9 = quick_gem('a_evil', '9', &init)
     @b2      = quick_gem('b', '2',      &init)
     @c1_2    = quick_gem('c', '1.2',    &init)
-    @x       = quick_gem('x', '1', &init)
+    @x       = quick_gem('x', '1',      &init)
     @dep_x   = quick_gem('dep_x', '1') do |s|
       s.files = %w[lib/code.rb]
       s.require_paths = %w[lib]
@@ -805,14 +805,15 @@ Also, a list:
       util_build_gem @a2_pre
     end
 
-    write_file File.join(*%W[gems #{@a1.original_name}   lib code.rb])
-    write_file File.join(*%W[gems #{@a2.original_name}   lib code.rb])
-    write_file File.join(*%W[gems #{@a3a.original_name}  lib code.rb])
-    write_file File.join(*%W[gems #{@b2.original_name}   lib code.rb])
-    write_file File.join(*%W[gems #{@c1_2.original_name} lib code.rb])
-    write_file File.join(*%W[gems #{@pl1.original_name}  lib code.rb])
-    write_file File.join(*%W[gems #{@x.original_name}  lib code.rb])
-    write_file File.join(*%W[gems #{@dep_x.original_name}  lib code.rb])
+    write_file File.join(*%W[gems #{@a1.original_name}      lib code.rb])
+    write_file File.join(*%W[gems #{@a2.original_name}      lib code.rb])
+    write_file File.join(*%W[gems #{@a3a.original_name}     lib code.rb])
+    write_file File.join(*%W[gems #{@a_evil9.original_name} lib code.rb])
+    write_file File.join(*%W[gems #{@b2.original_name}      lib code.rb])
+    write_file File.join(*%W[gems #{@c1_2.original_name}    lib code.rb])
+    write_file File.join(*%W[gems #{@pl1.original_name}     lib code.rb])
+    write_file File.join(*%W[gems #{@x.original_name}       lib code.rb])
+    write_file File.join(*%W[gems #{@dep_x.original_name}   lib code.rb])
 
     [@a1, @a2, @a3a, @a_evil9, @b2, @c1_2, @pl1, @x, @dep_x].each do |spec|
       util_build_gem spec
@@ -1094,10 +1095,50 @@ Also, a list:
     Gem::Version.create string
   end
 
-  class StaticSet
-    def initialize(specs)
-      @specs = specs.sort_by { |s| s.full_name }
+  ##
+  # A vendor_gem is used with a gem dependencies file.  The gem created here
+  # has no files, just a gem specification for the given +name+ and +version+.
+  #
+  # Yields the +specification+ to the block, if given
+
+  def vendor_gem name = 'a', version = 1
+    directory = File.join 'vendor', name
+
+    vendor_spec = Gem::Specification.new name, version do |specification|
+      yield specification if block_given?
     end
+
+    FileUtils.mkdir_p directory
+
+    open File.join(directory, "#{name}.gemspec"), 'w' do |io|
+      io.write vendor_spec.to_ruby
+    end
+
+    return name, vendor_spec.version, directory
+  end
+
+  ##
+  # The StaticSet is a static set of gem specifications used for testing only.
+  # It is available by requiring Gem::TestCase.
+
+  class StaticSet
+
+    ##
+    # Creates a new StaticSet for the given +specs+
+
+    def initialize(specs)
+      @specs = specs
+    end
+
+    ##
+    # Adds +spec+ to this set.
+
+    def add spec
+      @specs << spec
+    end
+
+    ##
+    # Finds +dep+ in this set.
 
     def find_spec(dep)
       @specs.reverse_each do |s|
@@ -1105,11 +1146,27 @@ Also, a list:
       end
     end
 
+    ##
+    # Finds all gems matching +dep+ in this set.
+
     def find_all(dep)
       @specs.find_all { |s| dep.matches_spec? s }
     end
 
-    def prefetch(reqs)
+    ##
+    # Loads a Gem::Specification from this set which has the given +name+,
+    # version +ver+, +platform+.  The +source+ is ignored.
+
+    def load_spec name, ver, platform, source
+      dep = Gem::Dependency.new name, ver
+      spec = find_spec dep
+
+      Gem::Specification.new spec.name, spec.version do |s|
+        s.platform = spec.platform
+      end
+    end
+
+    def prefetch reqs # :nodoc:
     end
   end
 

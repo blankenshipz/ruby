@@ -270,6 +270,8 @@ struct parser_params {
 
     int parser_yydebug;
 
+    int last_cr_line;
+
 #ifndef RIPPER
     /* Ruby core only */
     NODE *parser_eval_tree_begin;
@@ -398,6 +400,8 @@ static NODE *new_evstr_gen(struct parser_params*,NODE*);
 #define new_evstr(n) new_evstr_gen(parser,(n))
 static NODE *evstr2dstr_gen(struct parser_params*,NODE*);
 #define evstr2dstr(n) evstr2dstr_gen(parser,(n))
+static NODE *str_suffix_gen(struct parser_params*, NODE*, long);
+#define str_suffix(n,o) str_suffix_gen(parser,(n),(o))
 static NODE *splat_array(NODE*);
 
 static NODE *call_bin_op_gen(struct parser_params*,NODE*,ID,NODE*);
@@ -528,6 +532,9 @@ static int lvar_defined_gen(struct parser_params*, ID);
 #define RE_OPTION_ENCODING_NONE(o) ((o)&RE_OPTION_ARG_ENCODING_NONE)
 #define RE_OPTION_MASK  0xff
 #define RE_OPTION_ARG_ENCODING_NONE 32
+
+#define STR_OPTION_FROZEN 1
+#define STR_OPTION_BINARY 0	/* disabled */
 
 #define NODE_STRTERM NODE_ZARRAY	/* nothing to gc */
 #define NODE_HEREDOC NODE_ARRAY 	/* 1, 3 to gc */
@@ -756,7 +763,7 @@ static void token_info_pop(struct parser_params*, const char *token);
 %token <id>   tIDENTIFIER tFID tGVAR tIVAR tCONSTANT tCVAR tLABEL
 %token <node> tINTEGER tFLOAT tRATIONAL tIMAGINARY tSTRING_CONTENT tCHAR
 %token <node> tNTH_REF tBACK_REF
-%token <num>  tREGEXP_END
+%token <num>  tREGEXP_END tSTRING_SUFFIX
 
 %type <node> singleton strings string string1 xstring regexp
 %type <node> string_contents xstring_contents regexp_contents string_content
@@ -781,7 +788,8 @@ static void token_info_pop(struct parser_params*, const char *token);
 %type <node> mlhs mlhs_head mlhs_basic mlhs_item mlhs_node mlhs_post mlhs_inner
 %type <id>   fsym keyword_variable user_variable sym symbol operation operation2 operation3
 %type <id>   cname fname op f_rest_arg f_block_arg opt_f_block_arg f_norm_arg f_bad_arg
-%type <id>   f_kwrest
+%type <id>   f_kwrest f_label
+%type <num>  opt_string_sfx
 /*%%%*/
 /*%
 %type <val> program reswords then do dot_or_colon
@@ -3452,13 +3460,17 @@ lambda		:   {
 			lpar_beg = ++paren_nest;
 		    }
 		  f_larglist
+		    {
+			$<num>$ = ruby_sourceline;
+		    }
 		  lambda_body
 		    {
 			lpar_beg = $<num>2;
 		    /*%%%*/
-			$$ = NEW_LAMBDA($3, $4);
+			$$ = NEW_LAMBDA($3, $5);
+			nd_set_line($$, $<num>4);
 		    /*%
-			$$ = dispatch2(lambda, $3, $4);
+			$$ = dispatch2(lambda, $3, $5);
 		    %*/
 			dyna_pop($<vars>1);
 		    }
@@ -3474,11 +3486,7 @@ f_larglist	: '(' f_args opt_bv_decl ')'
 		    }
 		| f_args
 		    {
-		    /*%%%*/
 			$$ = $1;
-		    /*%
-			$$ = $1;
-		    %*/
 		    }
 		;
 
@@ -3804,7 +3812,7 @@ literal		: numeric
 		| dsym
 		;
 
-strings		: string
+strings 	: string opt_string_sfx
 		    {
 		    /*%%%*/
 			NODE *node = $1;
@@ -3814,6 +3822,7 @@ strings		: string
 			else {
 			    node = evstr2dstr(node);
 			}
+			node = str_suffix(node, $2);
 			$$ = node;
 		    /*%
 			$$ = $1;
@@ -3841,6 +3850,10 @@ string1		: tSTRING_BEG string_contents tSTRING_END
 			$$ = dispatch1(string_literal, $2);
 		    %*/
 		    }
+		;
+
+opt_string_sfx	: tSTRING_SUFFIX
+		| /* none */ {$$ = 0;}
 		;
 
 xstring		: tXSTRING_BEG xstring_contents tSTRING_END
@@ -4593,9 +4606,16 @@ f_arg		: f_arg_item
 		    }
 		;
 
-f_kw		: tLABEL arg_value
+
+f_label 	: tLABEL
 		    {
 			arg_var(formal_argument(get_id($1)));
+			$$ = $1;
+		    }
+		;
+
+f_kw		: f_label arg_value
+		    {
 			$$ = assignable($1, $2);
 		    /*%%%*/
 			$$ = NEW_KW_ARG(0, $$);
@@ -4603,9 +4623,8 @@ f_kw		: tLABEL arg_value
 			$$ = rb_assoc_new($$, $2);
 		    %*/
 		    }
-		| tLABEL
+		| f_label
 		    {
-			arg_var(formal_argument(get_id($1)));
 			$$ = assignable($1, (NODE *)-1);
 		    /*%%%*/
 			$$ = NEW_KW_ARG(0, $$);
@@ -4615,9 +4634,8 @@ f_kw		: tLABEL arg_value
 		    }
 		;
 
-f_block_kw	: tLABEL primary_value
+f_block_kw	: f_label primary_value
 		    {
-			arg_var(formal_argument(get_id($1)));
 			$$ = assignable($1, $2);
 		    /*%%%*/
 			$$ = NEW_KW_ARG(0, $$);
@@ -4625,9 +4643,8 @@ f_block_kw	: tLABEL primary_value
 			$$ = rb_assoc_new($$, $2);
 		    %*/
 		    }
-		| tLABEL
+		| f_label
 		    {
-			arg_var(formal_argument(get_id($1)));
 			$$ = assignable($1, (NODE *)-1);
 		    /*%%%*/
 			$$ = NEW_KW_ARG(0, $$);
@@ -4701,9 +4718,9 @@ f_kwrest	: kwrest_mark tIDENTIFIER
 		    }
 		;
 
-f_opt		: tIDENTIFIER '=' arg_value
+f_opt		: f_norm_arg '=' arg_value
 		    {
-			arg_var(formal_argument(get_id($1)));
+			arg_var(get_id($1));
 			$$ = assignable($1, $3);
 		    /*%%%*/
 			$$ = NEW_OPT_ARG(0, $$);
@@ -4713,9 +4730,9 @@ f_opt		: tIDENTIFIER '=' arg_value
 		    }
 		;
 
-f_block_opt	: tIDENTIFIER '=' primary_value
+f_block_opt	: f_norm_arg '=' primary_value
 		    {
-			arg_var(formal_argument(get_id($1)));
+			arg_var(get_id($1));
 			$$ = assignable($1, $3);
 		    /*%%%*/
 			$$ = NEW_OPT_ARG(0, $$);
@@ -5002,6 +5019,7 @@ none		: /* none */
 # define yylval  (*((YYSTYPE*)(parser->parser_yylval)))
 
 static int parser_regx_options(struct parser_params*);
+static int parser_str_options(struct parser_params*);
 static int parser_tokadd_string(struct parser_params*,int,int,int,long*,rb_encoding**);
 static void parser_tokaddmbc(struct parser_params *parser, int c, rb_encoding *enc);
 static int parser_parse_string(struct parser_params*,NODE*);
@@ -5017,6 +5035,7 @@ static int parser_here_document(struct parser_params*,NODE*);
 # define read_escape(flags,e)         parser_read_escape(parser, (flags), (e))
 # define tokadd_escape(e)             parser_tokadd_escape(parser, (e))
 # define regx_options()               parser_regx_options(parser)
+# define str_options()                parser_str_options(parser)
 # define tokadd_string(f,t,p,n,e)     parser_tokadd_string(parser,(f),(t),(p),(n),(e))
 # define parse_string(n)              parser_parse_string(parser,(n))
 # define tokaddmbc(c, enc)            parser_tokaddmbc(parser, (c), (enc))
@@ -5325,6 +5344,7 @@ yycompile0(VALUE arg)
 	    ruby_coverage = coverage(ruby_sourcefile_string, ruby_sourceline);
 	}
     }
+    parser->last_cr_line = ruby_sourceline - 1;
 
     parser_prepare(parser);
     deferred_nodes = 0;
@@ -5525,10 +5545,11 @@ rb_parser_compile_file_path(volatile VALUE vparser, VALUE fname, VALUE file, int
 #define STR_FUNC_QWORDS 0x08
 #define STR_FUNC_SYMBOL 0x10
 #define STR_FUNC_INDENT 0x20
+#define STR_FUNC_OPTION 0x40
 
 enum string_type {
-    str_squote = (0),
-    str_dquote = (STR_FUNC_EXPAND),
+    str_squote = (STR_FUNC_OPTION),
+    str_dquote = (STR_FUNC_EXPAND|STR_FUNC_OPTION),
     str_xquote = (STR_FUNC_EXPAND),
     str_regexp = (STR_FUNC_REGEXP|STR_FUNC_ESCAPE|STR_FUNC_EXPAND),
     str_sword  = (STR_FUNC_QWORDS),
@@ -5607,9 +5628,15 @@ parser_nextc(struct parser_params *parser)
 	}
     }
     c = (unsigned char)*lex_p++;
-    if (c == '\r' && peek('\n')) {
-	lex_p++;
-	c = '\n';
+    if (c == '\r') {
+	if (peek('\n')) {
+	    lex_p++;
+	    c = '\n';
+	}
+	else if (ruby_sourceline > parser->last_cr_line) {
+	    parser->last_cr_line = ruby_sourceline;
+	    rb_compile_warn(ruby_sourcefile, ruby_sourceline, "encountered \\r in middle of line, treated as a mere space");
+	}
     }
 
     return c;
@@ -5969,6 +5996,33 @@ parser_regx_options(struct parser_params *parser)
     return options | RE_OPTION_ENCODING(kcode);
 }
 
+static int
+parser_str_options(struct parser_params *parser)
+{
+    int c, options = 0;
+    const char *save_p = lex_p;
+
+    while (c = nextc(), ISALPHA(c)) {
+	switch (c) {
+#if STR_OPTION_FROZEN
+	  case 'f':
+	    options |= STR_OPTION_FROZEN;
+	    break;
+#endif
+#if STR_OPTION_BINARY
+	  case 'b':
+	    options |= STR_OPTION_BINARY;
+	    break;
+#endif
+	  default:
+	    lex_p = save_p;
+	    return 0;
+        }
+    }
+    pushback(c);
+    return options;
+}
+
 static void
 dispose_string(VALUE str)
 {
@@ -6235,6 +6289,10 @@ parser_parse_string(struct parser_params *parser, NODE *quote)
     rb_encoding *enc = current_enc;
 
     if (func == -1) return tSTRING_END;
+    if (func == 0) {
+	set_yylval_num(term);
+	return tSTRING_SUFFIX;
+    }
     c = nextc();
     if ((func & STR_FUNC_QWORDS) && ISSPACE(c)) {
 	do {c = nextc();} while (ISSPACE(c));
@@ -6243,11 +6301,18 @@ parser_parse_string(struct parser_params *parser, NODE *quote)
     if (c == term && !quote->nd_nest) {
 	if (func & STR_FUNC_QWORDS) {
 	    quote->nd_func = -1;
+	    quote->u2.id = 0;
 	    return ' ';
 	}
-	if (!(func & STR_FUNC_REGEXP)) return tSTRING_END;
-        set_yylval_num(regx_options());
-	return tREGEXP_END;
+	if (func & STR_FUNC_REGEXP) {
+	    set_yylval_num(regx_options());
+	    return tREGEXP_END;
+	}
+	if ((func & STR_FUNC_OPTION) && (func = str_options()) != 0) {
+	    quote->nd_func = 0;
+	    quote->u2.id = func;
+	}
+	return tSTRING_END;
     }
     if (space) {
 	pushback(c);
@@ -6935,7 +7000,8 @@ parser_yylex(struct parser_params *parser)
 	}
 	else {
 	    token = parse_string(lex_strterm);
-	    if (token == tSTRING_END || token == tREGEXP_END) {
+	    if ((token == tSTRING_END && lex_strterm->nd_func) ||
+		token == tSTRING_SUFFIX || token == tREGEXP_END) {
 		rb_gc_force_recycle((VALUE)lex_strterm);
 		lex_strterm = 0;
 		lex_state = EXPR_END;
@@ -8485,6 +8551,40 @@ evstr2dstr_gen(struct parser_params *parser, NODE *node)
 }
 
 static NODE *
+str_suffix_gen(struct parser_params *parser, NODE *node, long opt)
+{
+    if (nd_type(node) == NODE_STR) {
+#if STR_OPTION_BINARY
+	if (opt & STR_OPTION_BINARY) {
+	    rb_enc_associate_index(node->nd_lit, ENCINDEX_ASCII);
+	}
+#endif
+#if STR_OPTION_FROZEN
+	if (opt & STR_OPTION_FROZEN) {
+	    OBJ_FREEZE(node->nd_lit);
+	    node->nd_lit = rb_fstring(node->nd_lit);
+	    nd_set_type(node, NODE_LIT);
+	}
+#endif
+    }
+    else {
+#if STR_OPTION_BINARY
+	if (opt & STR_OPTION_BINARY) {
+	    VALUE ascii8bit = rb_enc_from_encoding(rb_ascii8bit_encoding());
+	    NODE *args = NEW_LIST(NEW_LIT(ascii8bit));
+	    node = NEW_CALL(node, rb_intern("force_encoding"), args);
+	}
+#endif
+#if STR_OPTION_FROZEN
+	if (opt & STR_OPTION_FROZEN) {
+	    node = NEW_CALL(node, rb_intern("freeze"), 0);
+	}
+#endif
+    }
+    return node;
+}
+
+static NODE *
 new_evstr_gen(struct parser_params *parser, NODE *node)
 {
     NODE *head = node;
@@ -8785,7 +8885,11 @@ ID
 rb_id_attrset(ID id)
 {
     if (!is_notop_id(id)) {
-	rb_bug("rb_id_attrset: operator ID - %"PRIdVALUE, (VALUE)id);
+	switch (id) {
+	  case tAREF: case tASET:
+	    return tASET;	/* only exception */
+	}
+	rb_name_error(id, "cannot make operator ID :%s attrset", rb_id2name(id));
     }
     else {
 	int scope = (int)(id & ID_SCOPE_MASK);
@@ -8793,9 +8897,11 @@ rb_id_attrset(ID id)
 	  case ID_LOCAL: case ID_INSTANCE: case ID_GLOBAL:
 	  case ID_CONST: case ID_CLASS: case ID_JUNK:
 	    break;
+	  case ID_ATTRSET:
+	    return id;
 	  default:
-	    rb_bug("rb_id_attrset: %s ID - %"PRIdVALUE, id_type_names[scope],
-		   (VALUE)id);
+	    rb_name_error(id, "cannot make %s ID %+"PRIsVALUE" attrset",
+			  id_type_names[scope], ID2SYM(id));
 
 	}
     }
@@ -10077,6 +10183,7 @@ static struct symbols {
     st_table *id_ivar2;
 #endif
     VALUE op_sym[tLAST_OP_ID];
+    int minor_marked;
 } global_symbols = {tLAST_TOKEN};
 
 static const struct st_hash_type symhash = {
@@ -10131,11 +10238,14 @@ Init_sym(void)
 }
 
 void
-rb_gc_mark_symbols(void)
+rb_gc_mark_symbols(int full_mark)
 {
-    rb_mark_tbl(global_symbols.id_str);
-    rb_gc_mark_locations(global_symbols.op_sym,
-			 global_symbols.op_sym + numberof(global_symbols.op_sym));
+    if (full_mark || global_symbols.minor_marked == 0) {
+	rb_mark_tbl(global_symbols.id_str);
+	rb_gc_mark_locations(global_symbols.op_sym,
+			     global_symbols.op_sym + numberof(global_symbols.op_sym));
+	global_symbols.minor_marked = 1;
+    }
 }
 #endif /* !RIPPER */
 
@@ -10190,7 +10300,7 @@ rb_enc_symname_p(const char *name, rb_encoding *enc)
 #define IDSET_ATTRSET_FOR_INTERN (~(~0U<<ID_SCOPE_MASK) & ~(1U<<ID_ATTRSET))
 
 static int
-rb_enc_symname_type(const char *name, long len, rb_encoding *enc, unsigned int allowed_atttset)
+rb_enc_symname_type(const char *name, long len, rb_encoding *enc, unsigned int allowed_attrset)
 {
     const char *m = name;
     const char *e = m + len;
@@ -10267,6 +10377,7 @@ rb_enc_symname_type(const char *name, long len, rb_encoding *enc, unsigned int a
 	if (m >= e || (*m != '_' && !rb_enc_isalpha(*m, enc) && ISASCII(*m)))
 	    return -1;
 	while (m < e && is_identchar(m, e, enc)) m += rb_enc_mbclen(m, e, enc);
+	if (m >= e) break;
 	switch (*m) {
 	  case '!': case '?':
 	    if (type == ID_GLOBAL || type == ID_CLASS || type == ID_INSTANCE) return -1;
@@ -10274,7 +10385,7 @@ rb_enc_symname_type(const char *name, long len, rb_encoding *enc, unsigned int a
 	    ++m;
 	    break;
 	  case '=':
-	    if (!(allowed_atttset & (1U << type))) return -1;
+	    if (!(allowed_attrset & (1U << type))) return -1;
 	    type = ID_ATTRSET;
 	    ++m;
 	    break;
@@ -10291,11 +10402,11 @@ rb_enc_symname2_p(const char *name, long len, rb_encoding *enc)
 }
 
 static int
-rb_str_symname_type(VALUE name, unsigned int allowed_atttset)
+rb_str_symname_type(VALUE name, unsigned int allowed_attrset)
 {
     const char *ptr = StringValuePtr(name);
     long len = RSTRING_LEN(name);
-    int type = rb_enc_symname_type(ptr, len, rb_enc_get(name), allowed_atttset);
+    int type = rb_enc_symname_type(ptr, len, rb_enc_get(name), allowed_attrset);
     RB_GC_GUARD(name);
     return type;
 }
@@ -10318,6 +10429,7 @@ register_symid_str(ID id, VALUE str)
 
     st_add_direct(global_symbols.sym_id, (st_data_t)str, id);
     st_add_direct(global_symbols.id_str, id, (st_data_t)str);
+    global_symbols.minor_marked = 0;
     return id;
 }
 
@@ -10384,7 +10496,8 @@ intern_str(VALUE str)
     enc = rb_enc_get(str);
     symenc = enc;
 
-    if (rb_cString && !rb_enc_asciicompat(enc)) {
+    if (!len || (rb_cString && !rb_enc_asciicompat(enc))) {
+      junk:
 	id = ID_JUNK;
 	goto new_id;
     }
@@ -10392,6 +10505,7 @@ intern_str(VALUE str)
     id = 0;
     switch (*m) {
       case '$':
+	if (len < 2) goto junk;
 	id |= ID_GLOBAL;
 	if ((mb = is_special_global_name(++m, e, enc)) != 0) {
 	    if (!--mb) symenc = rb_usascii_encoding();
@@ -10400,10 +10514,12 @@ intern_str(VALUE str)
 	break;
       case '@':
 	if (m[1] == '@') {
+	    if (len < 3) goto junk;
 	    m++;
 	    id |= ID_CLASS;
 	}
 	else {
+	    if (len < 2) goto junk;
 	    id |= ID_INSTANCE;
 	}
 	m++;
@@ -10430,6 +10546,8 @@ intern_str(VALUE str)
     }
     if (name[last] == '=') {
 	/* attribute assignment */
+	if (last > 1 && name[last-1] == '=')
+	    goto junk;
 	id = rb_intern3(name, last, enc);
 	if (id > tLAST_OP_ID && !is_attrset_id(id)) {
 	    enc = rb_enc_get(rb_id2str(id));
@@ -10515,6 +10633,7 @@ rb_id2str(ID id)
 		str = rb_usascii_str_new(name, 1);
 		OBJ_FREEZE(str);
 		global_symbols.op_sym[i] = str;
+		global_symbols.minor_marked = 0;
 	    }
 	    return str;
 	}
@@ -10525,6 +10644,7 @@ rb_id2str(ID id)
 		    str = rb_usascii_str_new2(op_tbl[i].name);
 		    OBJ_FREEZE(str);
 		    global_symbols.op_sym[i] = str;
+		    global_symbols.minor_marked = 0;
 		}
 		return str;
 	    }

@@ -495,10 +495,10 @@ make_seed_value(const uint32_t *ptr)
 {
     VALUE seed;
     size_t len;
+    uint32_t buf[DEFAULT_SEED_CNT+1];
 
     if (ptr[DEFAULT_SEED_CNT-1] <= 1) {
         /* set leading-zero-guard */
-        uint32_t buf[DEFAULT_SEED_CNT+1];
         MEMCPY(buf, ptr, uint32_t, DEFAULT_SEED_CNT);
         buf[DEFAULT_SEED_CNT] = 1;
         ptr = buf;
@@ -632,7 +632,7 @@ random_load(VALUE obj, VALUE dump)
 
     rb_check_copyable(obj, dump);
     Check_Type(dump, T_ARRAY);
-    ary = RARRAY_RAWPTR(dump);
+    ary = RARRAY_CONST_PTR(dump);
     switch (RARRAY_LEN(dump)) {
       case 3:
 	seed = ary[2];
@@ -851,7 +851,7 @@ rb_random_ulong_limited(VALUE obj, unsigned long limit)
     if (!rnd) {
 	extern int rb_num_negative_p(VALUE);
 	VALUE lim = ulong_to_num_plus_1(limit);
-	VALUE v = rb_funcall2(obj, id_rand, 1, &lim);
+	VALUE v = rb_to_int(rb_funcall2(obj, id_rand, 1, &lim));
 	unsigned long r = NUM2ULONG(v);
 	if (rb_num_negative_p(v)) {
 	    rb_raise(rb_eRangeError, "random number too small %ld", r);

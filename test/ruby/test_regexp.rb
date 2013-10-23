@@ -380,7 +380,7 @@ class TestRegexp < Test::Unit::TestCase
     assert_equal(/a/, eval(%q(s="\u0061";/#{s}/n)))
     assert_raise(RegexpError) { s = "\u3042"; eval(%q(/#{s}/n)) }
     assert_raise(RegexpError) { s = "\u0061"; eval(%q(/\u3042#{s}/n)) }
-    assert_raise(RegexpError) { s1=[0xff].pack("C"); s2="\u3042"; eval(%q(/#{s1}#{s2}/)) }
+    assert_raise(RegexpError) { s1=[0xff].pack("C"); s2="\u3042"; eval(%q(/#{s1}#{s2}/)); [s1, s2] }
 
     assert_raise(ArgumentError) { s = '\x'; /#{ s }/ }
 
@@ -500,6 +500,12 @@ class TestRegexp < Test::Unit::TestCase
     assert_equal('foo[\z]baz', "foobarbaz".sub!(/(b..)/, '[\z]'))
   end
 
+  def test_regsub_K
+    bug8856 = '[ruby-dev:47694] [Bug #8856]'
+    result = "foobarbazquux/foobarbazquux".gsub(/foo\Kbar/, "")
+    assert_equal('foobazquux/foobazquux', result, bug8856)
+  end
+
   def test_KCODE
     assert_nil($KCODE)
     assert_nothing_raised { $KCODE = nil }
@@ -587,7 +593,7 @@ class TestRegexp < Test::Unit::TestCase
     check(/\A\80\z/, "80", ["\100", ""])
     check(/\A\77\z/, "?")
     check(/\A\78\z/, "\7" + '8', ["\100", ""])
-    check(/\A\Qfoo\E\z/, "QfooE")
+    check(eval('/\A\Qfoo\E\z/'), "QfooE")
     check(/\Aa++\z/, "aaa")
     check('\Ax]\z', "x]")
     check(/x#foo/x, "x", "#foo")
@@ -761,9 +767,9 @@ class TestRegexp < Test::Unit::TestCase
 
   def test_posix_bracket
     check(/\A[[:alpha:]0]\z/, %w(0 a), %w(1 .))
-    check(/\A[[:^alpha:]0]\z/, %w(0 1 .), "a")
-    check(/\A[[:alpha\:]]\z/, %w(a l p h a :), %w(b 0 1 .))
-    check(/\A[[:alpha:foo]0]\z/, %w(0 a), %w(1 .))
+    check(eval('/\A[[:^alpha:]0]\z/'), %w(0 1 .), "a")
+    check(eval('/\A[[:alpha\:]]\z/'), %w(a l p h a :), %w(b 0 1 .))
+    check(eval('/\A[[:alpha:foo]0]\z/'), %w(0 a), %w(1 .))
     check(/\A[[:xdigit:]&&[:alpha:]]\z/, "a", %w(g 0))
     check('\A[[:abcdefghijklmnopqrstu:]]+\z', "[]")
     failcheck('[[:alpha')
@@ -940,8 +946,9 @@ class TestRegexp < Test::Unit::TestCase
   def test_error_message_on_failed_conversion
     bug7539 = '[ruby-core:50733]'
     assert_equal false, /x/=== 42
-    err = assert_raise(TypeError){ Regexp.quote(42) }
-    assert_equal 'no implicit conversion of Fixnum into String', err.message, bug7539
+    assert_raise_with_message(TypeError, 'no implicit conversion of Fixnum into String', bug7539) {
+      Regexp.quote(42)
+    }
   end
 
   def test_conditional_expression
@@ -964,6 +971,58 @@ class TestRegexp < Test::Unit::TestCase
       assert_not_match("(?<!(?i)ab)cd", "ABcd")
       assert_not_match("(?<!(?i:ab))cd", "ABcd")
     }
+  end
+
+  def test_once
+    pr1 = proc{|i| /#{i}/o}
+    assert_equal(/0/, pr1.call(0))
+    assert_equal(/0/, pr1.call(1))
+    assert_equal(/0/, pr1.call(2))
+
+    # recursive
+    pr2 = proc{|i|
+      if i > 0
+        /#{pr2.call(i-1).to_s}#{i}/
+      else
+        //
+      end
+    }
+    assert_equal(/(?-mix:(?-mix:(?-mix:)1)2)3/, pr2.call(3))
+
+    # multi-thread
+    m = Mutex.new
+    pr3 = proc{|i|
+      /#{m.unlock; sleep 0.5; i}/o
+    }
+    ary = []
+    n = 0
+    th1 = Thread.new{m.lock; ary << pr3.call(n+=1)}
+    th2 = Thread.new{m.lock; ary << pr3.call(n+=1)}
+    th1.join; th2.join
+    assert_equal([/1/, /1/], ary)
+
+    # escape
+    pr4 = proc{|i|
+      catch(:xyzzy){
+        /#{throw :xyzzy, i}/o =~ ""
+        :ng
+      }
+    }
+    assert_equal(0, pr4.call(0))
+    assert_equal(1, pr4.call(1))
+  end
+
+  def test_eq_tilde_can_be_overridden
+    assert_separately([], <<-RUBY)
+      class Regexp
+        undef =~
+        def =~(str)
+          "foo"
+        end
+      end
+
+      assert_equal("foo", // =~ "")
+    RUBY
   end
 
   # This assertion is for porting x2() tests in testpy.py of Onigmo.

@@ -264,6 +264,29 @@ rb_warn_m(int argc, VALUE *argv, VALUE exc)
     return Qnil;
 }
 
+#define MAX_BUG_REPORTERS 0x100
+
+static struct bug_reporters {
+    void (*func)(FILE *out, void *data);
+    void *data;
+} bug_reporters[MAX_BUG_REPORTERS];
+
+static int bug_reporters_size;
+
+int
+rb_bug_reporter_add(void (*func)(FILE *, void *), void *data)
+{
+    struct bug_reporters *reporter;
+    if (bug_reporters_size >= MAX_BUG_REPORTERS) {
+	return 0; /* failed to register */
+    }
+    reporter = &bug_reporters[bug_reporters_size++];
+    reporter->func = func;
+    reporter->data = data;
+
+    return 1;
+}
+
 static void
 report_bug(const char *file, int line, const char *fmt, va_list args)
 {
@@ -281,9 +304,16 @@ report_bug(const char *file, int line, const char *fmt, va_list args)
 	snprintf(buf, 256, "\n%s\n\n", ruby_description);
 	fputs(buf, out);
 
-
 	rb_vm_bugreport();
 
+	/* call additional bug reporters */
+	{
+	    int i;
+	    for (i=0; i<bug_reporters_size; i++) {
+		struct bug_reporters *reporter = &bug_reporters[i];
+		(*reporter->func)(out, reporter->data);
+	    }
+	}
 	fprintf(out, REPORTBUG_MSG);
     }
 }
@@ -1588,14 +1618,14 @@ syserr_eqq(VALUE self, VALUE exc)
  *
  *     foo = "bar"
  *     proc = Proc.new do
- *       $SAFE = 4
- *       foo.gsub! "a", "*"
+ *       $SAFE = 3
+ *       foo.untaint
  *     end
  *     proc.call
  *
  *  <em>raises the exception:</em>
  *
- *     SecurityError: Insecure: can't modify string
+ *     SecurityError: Insecure: Insecure operation `untaint' at level 3
  */
 
 /*
@@ -1937,9 +1967,16 @@ void
 rb_sys_fail_path_in(const char *func_name, VALUE path)
 {
     int n = errno;
-    VALUE args[2];
 
     errno = 0;
+    rb_syserr_fail_path_in(func_name, n, path);
+}
+
+void
+rb_syserr_fail_path_in(const char *func_name, int n, VALUE path)
+{
+    VALUE args[2];
+
     if (!path) path = Qnil;
     if (n == 0) {
 	const char *s = !NIL_P(path) ? RSTRING_PTR(path) : "";
@@ -2030,10 +2067,6 @@ rb_check_frozen(VALUE obj)
 void
 rb_error_untrusted(VALUE obj)
 {
-    if (rb_safe_level() >= 4) {
-	rb_raise(rb_eSecurityError, "Insecure: can't modify %s",
-		 rb_obj_classname(obj));
-    }
 }
 
 #undef rb_check_trusted
